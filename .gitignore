@@ -1,4 +1,7 @@
-<<<<<<< HEAD
+/vendor/
+/node_modules/
+/npm-debug.log
+/yarn-error.log
 *.log
 .DS_Store
 .env
@@ -13,45 +16,16 @@
 /.vscode
 /.zed
 /auth.json
-/node_modules
 /public/build
 /public/hot
 /public/storage
 /storage/*.key
 /storage/pail
-/vendor
-Homestead.json
-Homestead.yaml
-Thumbs.db
-=======
-/vendor/
-node_modules/
-npm-debug.log
-yarn-error.log
-
-# Laravel 4 specific
 bootstrap/compiled.php
 app/storage/
-
-# Laravel 5 & Lumen specific
-public/storage
-public/hot
-
-# Laravel 5 & Lumen specific with changed public path
 public_html/storage
 public_html/hot
-
-storage/*.key
-.env
-Homestead.yaml
 Homestead.json
+Homestead.yaml
 /.vagrant
-.phpunit.result.cache
-
-/public/build
-/storage/pail
-.env.backup
-.env.production
-.phpactor.json
-auth.json
->>>>>>> 5ea0a553400e9baa9720cb9caf9f95250b72a42a
+Thumbs.db
