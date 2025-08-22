@@ -17,12 +17,16 @@ class AuthController extends Controller
             'name' => 'required|string|max:255',
             'email' => 'required|string|email|max:255|unique:users',
             'password' => ['required', 'confirmed', Password::defaults()],
+            'department' => 'nullable|array',
+            'role' => 'nullable|array',
         ]);
 
         $user = User::create([
             'name' => $validated['name'],
             'email' => $validated['email'],
             'password' => Hash::make($validated['password']),
+            'department' => $validated['department'] ?? [],
+            'role' => $validated['role'] ?? [],
         ]);
 
         $token = $user->createToken('auth_token')->plainTextToken;
@@ -30,9 +34,10 @@ class AuthController extends Controller
         return response()->json([
             'access_token' => $token,
             'token_type' => 'Bearer',
-            'user' => $user->only(['id', 'name', 'email']),
+            'user' => $user->only(['id', 'name', 'email', 'department', 'role']),
         ]);
     }
+
 
     public function login(Request $request): JsonResponse
     {
@@ -57,7 +62,7 @@ class AuthController extends Controller
         ]);
     }
 
-      public function logout(Request $request)
+    public function logout(Request $request)
     {
         // Log the user out
         Auth::logout();
@@ -70,11 +75,11 @@ class AuthController extends Controller
             'message' => 'Logged out successfully'
         ]);
     }
-    
+
     public function me(Request $request): JsonResponse
     {
         return response()->json([
-            'user' => $request->user()->only(['id', 'name', 'email']),
+            'user' => $request->user()->only(['id', 'name', 'email', 'department', 'role']),
         ]);
     }
 }
