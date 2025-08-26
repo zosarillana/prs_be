@@ -13,6 +13,12 @@ return new class extends Migration {
         Schema::create('purchase_reports', function (Blueprint $table) {
             $table->id();
             $table->integer('user_id');
+            $table->string('series_no');         // For series/PR number
+            $table->string('pr_purpose');        // Purpose of the PR
+            $table->string('department');        // Department name
+            $table->date('date_submitted');      // Date submitted
+            $table->date('date_needed');         // Date needed
+
             $table->json('quantity');
             $table->json('unit');
             $table->json('item_description');
@@ -20,7 +26,6 @@ return new class extends Migration {
             $table->json('remarks');
             $table->timestamps();
         });
-
     }
 
     /**

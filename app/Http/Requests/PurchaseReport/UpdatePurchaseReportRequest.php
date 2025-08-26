@@ -13,8 +13,14 @@ class UpdatePurchaseReportRequest extends FormRequest
 
     public function rules(): array
     {
-        return [
+         return [
             'user_id'          => 'required|integer',
+            'series_no'        => 'required|string|max:50',
+            'pr_purpose'       => 'required|string|max:255',
+            'department'       => 'required|string|max:100',
+            'date_submitted'   => 'required|date',
+            'date_needed'      => 'required|date|after_or_equal:date_submitted',
+
             'quantity'         => 'required|array',
             'unit'             => 'required|array',
             'item_description' => 'required|array',

@@ -1,6 +1,7 @@
 <?php
 
 namespace App\Http\Requests\PurchaseReport;
+use App\Models\User;
 use Illuminate\Foundation\Http\FormRequest;
 
 class StorePurchaseReportRequest extends FormRequest
@@ -13,12 +14,22 @@ class StorePurchaseReportRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'user_id'          => 'required|integer',
-            'quantity'         => 'required|array',
-            'unit'             => 'required|array',
+            'user_id' => 'required|integer',
+            'series_no' => 'required|string|max:50',
+            'pr_purpose' => 'required|string|max:255',
+            'department' => 'required|string|max:100',
+            'date_submitted' => 'required|date',
+            'date_needed' => 'required|date|after_or_equal:date_submitted',
+
+            'quantity' => 'required|array',
+            'unit' => 'required|array',
             'item_description' => 'required|array',
-            'tag'              => 'nullable|array',
-            'remarks'          => 'nullable|array',
+            'tag' => 'nullable|array',
+            'remarks' => 'nullable|array',
         ];
+
+        
     }
+
+  
 }

@@ -16,19 +16,35 @@ class PurchaseReportService
      */
     public function getQuery(array $filters = []): Builder
     {
-        $query = PurchaseReport::query();
+        $query = PurchaseReport::with('user'); // eager load user
 
-        // Optional search filter
+        // Search by fields
         if (!empty($filters['searchTerm'])) {
-            $query->where('title', 'like', '%' . $filters['searchTerm'] . '%');
+            $query->where(function ($q) use ($filters) {
+                $q->where('series_no', 'like', '%' . $filters['searchTerm'] . '%')
+                    ->orWhere('pr_purpose', 'like', '%' . $filters['searchTerm'] . '%')
+                    ->orWhere('department', 'like', '%' . $filters['searchTerm'] . '%')
+                    ->orWhereHas('user', function ($q) use ($filters) {
+                        $q->where('name', 'like', '%' . $filters['searchTerm'] . '%')
+                            ->orWhere('email', 'like', '%' . $filters['searchTerm'] . '%');
+                    });
+            });
         }
 
-        // Example: optional date filter
+        // Date filters
+        if (!empty($filters['submittedFrom']) && !empty($filters['submittedTo'])) {
+            $query->whereBetween('date_submitted', [$filters['submittedFrom'], $filters['submittedTo']]);
+        }
+
+        if (!empty($filters['neededFrom']) && !empty($filters['neededTo'])) {
+            $query->whereBetween('date_needed', [$filters['neededFrom'], $filters['neededTo']]);
+        }
+
         if (!empty($filters['fromDate']) && !empty($filters['toDate'])) {
             $query->whereBetween('created_at', [$filters['fromDate'], $filters['toDate']]);
         }
 
-        // Example: optional sorting
+        // Sorting
         if (!empty($filters['sortBy'])) {
             $sortOrder = $filters['sortOrder'] ?? 'asc';
             $query->orderBy($filters['sortBy'], $sortOrder);
@@ -56,10 +72,12 @@ class PurchaseReportService
      *
      * @throws ModelNotFoundException
      */
+
     public function show(int $id): PurchaseReport
     {
-        return PurchaseReport::findOrFail($id);
+        return PurchaseReport::with('user')->findOrFail($id);
     }
+
 
     /**
      * Update a Purchase Report by ID.

@@ -11,6 +11,11 @@ class PurchaseReport extends Model
 
     protected $fillable = [
         'user_id',
+        'series_no',
+        'pr_purpose',
+        'department',
+        'date_submitted',
+        'date_needed',
         'quantity',
         'unit',
         'item_description',
@@ -18,12 +23,19 @@ class PurchaseReport extends Model
         'remarks',
     ];
 
-   protected $casts = [
-        'user_id'          => 'integer', 
-        'quantity'         => 'array',
-        'unit'             => 'array',
+    protected $casts = [
+        'user_id' => 'integer',
+        'quantity' => 'array',
+        'unit' => 'array',
         'item_description' => 'array',
-        'tag'              => 'array',
-        'remarks'          => 'array',
+        'tag' => 'array',
+        'remarks' => 'array',
+        'date_submitted' => 'datetime:Y-m-d',
+        'date_needed' => 'datetime:Y-m-d',
     ];
+
+    public function user()
+    {
+        return $this->belongsTo(User::class, 'user_id');
+    }
 }

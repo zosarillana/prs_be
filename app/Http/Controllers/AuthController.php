@@ -58,16 +58,13 @@ class AuthController extends Controller
         return response()->json([
             'access_token' => $token,
             'token_type' => 'Bearer',
-            'user' => $user->only(['id', 'name', 'email']),
+            'user' => $user->only(['id', 'name', 'email', 'department', 'role']),
         ]);
     }
 
     public function logout(Request $request)
     {
-        // Log the user out
-        Auth::logout();
-
-        // Invalidate the session
+        // Invalidate the session cookie
         $request->session()->invalidate();
         $request->session()->regenerateToken();
 
@@ -75,7 +72,7 @@ class AuthController extends Controller
             'message' => 'Logged out successfully'
         ]);
     }
-
+    
     public function me(Request $request): JsonResponse
     {
         return response()->json([

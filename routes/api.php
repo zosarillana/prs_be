@@ -1,23 +1,14 @@
 <?php
 
+use App\Http\Controllers\PurchaseReportController;
 use Illuminate\Support\Facades\Route;
-use App\Http\Controllers\AuthController;
-use App\Http\Controllers\PurchaseReportController; // ✅ import your controller
 
-Route::get('/test', function () {
-    return response()->json(['message' => 'Hello from Laravel 12 API!']);
-});
-
-// 🔹 Auth routes
-Route::post('/register', [AuthController::class, 'register']);
-Route::post('/login', [AuthController::class, 'login']);
-Route::post('/logout', [AuthController::class, 'logout'])->middleware('auth:sanctum');
-
-// 🔹 Purchase Reports CRUD (protected by auth)
-Route::apiResource('purchase-reports', PurchaseReportController::class);
+// Route::apiResource('purchase-reports', PurchaseReportController::class);
+// // New table endpoint
+// Route::get('purchase-reports-table', [PurchaseReportController::class, 'table']);
 
 Route::middleware('auth:sanctum')->group(function () {
-    Route::get('/me', [AuthController::class, 'me']);
-
-
+    Route::apiResource('purchase-reports', PurchaseReportController::class);
+    // New table endpoint
+    Route::get('purchase-reports-table', [PurchaseReportController::class, 'table']);
 });
