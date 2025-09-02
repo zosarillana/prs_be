@@ -63,7 +63,9 @@ class PurchaseReportService
     {
         // Ensure item_status is generated if not provided
         if (!isset($data['item_status']) && isset($data['tag']) && is_array($data['tag'])) {
-            $data['item_status'] = array_fill(0, count($data['tag']), 'pending');
+            $data['item_status'] = array_map(function ($tag) {
+                return str_ends_with($tag, '_tr') ? 'pending_tr' : 'pending';
+            }, $data['tag']);
         }
 
         // Ensure remarks is generated if not provided
@@ -109,7 +111,7 @@ class PurchaseReportService
         return $report;
     }
 
-    
+
     /**
      * Delete a Purchase Report by ID.
      *
