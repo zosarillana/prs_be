@@ -61,6 +61,19 @@ class PurchaseReportService
      */
     public function store(array $data): PurchaseReport
     {
+        // Ensure item_status is generated if not provided
+        if (!isset($data['item_status']) && isset($data['tag']) && is_array($data['tag'])) {
+            $data['item_status'] = array_fill(0, count($data['tag']), 'pending');
+        }
+
+        // Ensure remarks is generated if not provided
+        if (!isset($data['remarks']) && isset($data['tag']) && is_array($data['tag'])) {
+            $data['remarks'] = array_fill(0, count($data['tag']), '');
+        }
+
+        // Always set pr_status to "on_hold" on creation
+        $data['pr_status'] = 'on_hold';
+
         return PurchaseReport::create($data);
     }
 
@@ -96,6 +109,7 @@ class PurchaseReportService
         return $report;
     }
 
+    
     /**
      * Delete a Purchase Report by ID.
      *

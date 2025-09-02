@@ -11,3 +11,17 @@ Route::post('/logout', [AuthController::class, 'logout'])->middleware('auth:sanc
 Route::middleware('auth:sanctum')->group(function () {
     Route::get('/me', [AuthController::class, 'me']);
 });
+
+Route::get('/debug-broadcasting', function () {
+    return [
+        'default_connection' => config('broadcasting.default'),
+        'broadcast_connection' => env('BROADCAST_CONNECTION'),
+        'broadcast_driver' => env('BROADCAST_DRIVER'),
+        'reverb_config' => config('broadcasting.connections.reverb'),
+        'all_env' => [
+            'REVERB_APP_ID' => env('REVERB_APP_ID'),
+            'REVERB_APP_KEY' => env('REVERB_APP_KEY'),
+            'REVERB_APP_SECRET' => env('REVERB_APP_SECRET'),
+        ]
+    ];
+});

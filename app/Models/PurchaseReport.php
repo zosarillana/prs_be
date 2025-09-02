@@ -20,6 +20,8 @@ class PurchaseReport extends Model
         'unit',
         'item_description',
         'tag',
+        'item_status',
+        'pr_status',
         'remarks',
     ];
 
@@ -29,6 +31,7 @@ class PurchaseReport extends Model
         'unit' => 'array',
         'item_description' => 'array',
         'tag' => 'array',
+        'item_status' => 'array',
         'remarks' => 'array',
         'date_submitted' => 'datetime:Y-m-d',
         'date_needed' => 'datetime:Y-m-d',

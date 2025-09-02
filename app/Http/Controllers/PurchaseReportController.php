@@ -6,19 +6,24 @@ namespace App\Http\Controllers;
 use App\Helpers\MapPurchaseReport;
 use App\Http\Requests\PurchaseReport\StorePurchaseReportRequest;
 use App\Http\Requests\PurchaseReport\UpdatePurchaseReportRequest;
+use App\Events\PurchaseReportEvents\PurchaseReportCreated;
 use App\Service\Paginator\PaginatorService;
 use App\Service\PurchaseReport\PurchaseReportService;
+use App\Service\PurchaseReport\ApprovalPrService;
 use Illuminate\Http\Request;
 
 class PurchaseReportController extends Controller
 {
     protected $purchaseReportService;
+    protected $approvalPrService;
 
-    public function __construct(PurchaseReportService $purchaseReportService)
-    {
+    public function __construct(
+        PurchaseReportService $purchaseReportService,
+        ApprovalPrService $approvalPrService
+    ) {
         $this->purchaseReportService = $purchaseReportService;
+        $this->approvalPrService = $approvalPrService;
     }
-
     /**
      * Display a listing of purchase reports.
      */
@@ -92,8 +97,13 @@ class PurchaseReportController extends Controller
     public function store(StorePurchaseReportRequest $request)
     {
         $report = $this->purchaseReportService->store($request->validated());
+
+        // Broadcast event
+        event(new PurchaseReportCreated($report));
+
         return response()->json($report, 201);
     }
+
 
     /**
      * Display a single purchase report.
@@ -119,5 +129,26 @@ class PurchaseReportController extends Controller
     {
         $this->purchaseReportService->delete($id);
         return response()->json(['message' => 'Deleted successfully']);
+    }
+
+    /**
+     * Approve or reject a specific item inside purchase report (via ApprovalPrService).
+     */
+    public function approveItem(Request $request, $id)
+    {
+        $validated = $request->validate([
+            'index' => 'required|integer|min:0',
+            'status' => 'required|string|in:approved,rejected',
+            'remark' => 'nullable|string',
+        ]);
+
+        $report = $this->approvalPrService->updateItemStatus(
+            $id,
+            $validated['index'],
+            $validated['status'],
+            $validated['remark'] ?? null
+        );
+
+        return response()->json($report);
     }
 }

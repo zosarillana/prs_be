@@ -25,6 +25,8 @@ class StorePurchaseReportRequest extends FormRequest
             'unit' => 'required|array',
             'item_description' => 'required|array',
             'tag' => 'nullable|array',
+            'item_status' => 'nullable|array',
+            'pr_status' => 'nullable|string|max:100',
             'remarks' => 'nullable|array',
         ];
 

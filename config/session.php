@@ -156,8 +156,8 @@ return [
     |
     */
 
-    'domain' => env('SESSION_DOMAIN'),
-
+    'domain' => env('SESSION_DOMAIN', null),
+    'same_site' => 'lax', // Important for cross-origin requests
     /*
     |--------------------------------------------------------------------------
     | HTTPS Only Cookies
