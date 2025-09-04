@@ -23,10 +23,16 @@ class PurchaseReport extends Model
         'item_status',
         'pr_status',
         'remarks',
+        'tr_user_id',
+        'hod_user_id',
+        'tr_signed_at',
+        'hod_signed_at',
     ];
 
     protected $casts = [
         'user_id' => 'integer',
+        'tr_user_id' => 'integer',     // Add this cast
+        'hod_user_id' => 'integer',    // Add this cast
         'quantity' => 'array',
         'unit' => 'array',
         'item_description' => 'array',
@@ -35,10 +41,22 @@ class PurchaseReport extends Model
         'remarks' => 'array',
         'date_submitted' => 'datetime:Y-m-d',
         'date_needed' => 'datetime:Y-m-d',
+        'tr_signed_at' => 'datetime',   // Add this cast
+        'hod_signed_at' => 'datetime',  // Add this cast
     ];
 
     public function user()
     {
         return $this->belongsTo(User::class, 'user_id');
+    }
+
+    public function trUser()
+    {
+        return $this->belongsTo(User::class, 'tr_user_id');
+    }
+
+    public function hodUser()
+    {
+        return $this->belongsTo(User::class, 'hod_user_id');
     }
 }

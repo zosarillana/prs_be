@@ -67,7 +67,8 @@ class PurchaseReportController extends Controller
         PaginatorService $paginator,
         PurchaseReportService $purchaseReportService
     ) {
-        // Build query via service
+        $user = $request->user(); // Authenticated user
+
         $query = $purchaseReportService->getQuery([
             'searchTerm' => $request->input('searchTerm'),
             'fromDate' => $request->input('fromDate'),
@@ -76,20 +77,41 @@ class PurchaseReportController extends Controller
             'sortOrder' => $request->input('sortOrder', 'asc'),
         ]);
 
-        // Paginate results
+        $departments = $user->department ?? [];
+        $roles = $user->role ?? [];
+
+        // Always filter by department
+        $query->whereIn('department', $departments);
+
+        // If user is a technical reviewer
+        if (in_array('technical_reviewer', $roles)) {
+            $query->where(function ($q) {
+                $q->where(function ($sub) {
+                    // pr_status = for_approval AND tag ends with "_tr"
+                    $sub->where('pr_status', 'for_approval')
+                        ->where(function ($tagSub) {
+                            // if tags are stored as JSON array
+                            $tagSub->whereRaw("JSON_SEARCH(JSON_EXTRACT(tag, '$'), 'one', '%_tr') IS NOT NULL");
+                        });
+                })
+                    ->orWhere('pr_status', 'on_hold_tr');
+            });
+        }
+        // else: no extra filter → all items from department(s)
+
         $result = $paginator->paginate(
             $query,
             $request->input('pageNumber', 1),
             $request->input('pageSize', 10)
         );
 
-        // Map items using your new helper
         $result['items'] = collect($result['items'])
             ->map(fn($report) => MapPurchaseReport::mapTable($report))
             ->toArray();
 
         return response()->json($result);
     }
+
 
     /**
      * Store a newly created purchase report.
@@ -108,10 +130,14 @@ class PurchaseReportController extends Controller
     /**
      * Display a single purchase report.
      */
-    public function show($id)
+      public function show($id)
     {
         $report = $this->purchaseReportService->show($id);
-        return response()->json($report);
+        
+        // Use the mapper to format the response consistently
+        $mappedReport = MapPurchaseReport::map($report);
+        
+        return response()->json($mappedReport);
     }
     /**
      * Update a purchase report.
@@ -140,15 +166,20 @@ class PurchaseReportController extends Controller
             'index' => 'required|integer|min:0',
             'status' => 'required|string|in:approved,rejected',
             'remark' => 'nullable|string',
+            'as_role' => 'nullable|string|in:technical_reviewer,hod,both',
+            'logged_user_id' => 'required|integer|exists:users,id', // ✅ add this
         ]);
 
         $report = $this->approvalPrService->updateItemStatus(
             $id,
             $validated['index'],
             $validated['status'],
-            $validated['remark'] ?? null
+            $validated['remark'] ?? null,
+            $validated['as_role'] ?? null,
+            $validated['logged_user_id'] ?? null, // ✅ pass it along
         );
 
         return response()->json($report);
     }
+
 }

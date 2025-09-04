@@ -3,6 +3,7 @@
 namespace App\Helpers;
 
 use App\Models\PurchaseReport;
+use App\Models\User;
 
 class MapPurchaseReport
 {
@@ -19,14 +20,26 @@ class MapPurchaseReport
             'unit' => $report->unit,
             'item_description' => $report->item_description,
             'tag' => $report->tag,
+            'item_status' => $report->item_status,
+            
             'remarks' => $report->remarks,
-            'user' => $report->user ? [
-                'id' => $report->user->id,
-                'name' => $report->user->name,
-                'email' => $report->user->email,
-                'department' => $report->user->department,
-                'role' => $report->user->role,
-            ] : null,
+            'user' => $report->user ? self::mapUser($report->user) : null,
+            'tr_user_id' => $report->trUser ? self::mapUser($report->trUser) : null,
+            'hod_user_id' => $report->hodUser ? self::mapUser($report->hodUser) : null,
+            'tr_signed_at' => $report->tr_signed_at ? $report->tr_signed_at->format('Y-m-d') : null,
+            'hod_signed_at' => $report->hod_signed_at ? $report->hod_signed_at->format('Y-m-d') : null,
+        ];
+    }
+
+    protected static function mapUser(User $user): array
+    {
+        return [
+            'id' => $user->id,
+            'name' => $user->name,
+            'email' => $user->email,
+            'department' => $user->department,
+            'role' => $user->role,
+            'signature' => $user->signature,
         ];
     }
 

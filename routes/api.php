@@ -11,6 +11,8 @@ use Illuminate\Support\Facades\Route;
 Route::middleware('auth:sanctum')->group(function () {
     Route::apiResource('purchase-reports', PurchaseReportController::class);
     Route::apiResource('users', UserController::class);
+    // Add this line for the signature upload
+    Route::post('users/{id}/signature', [UserController::class, 'updateSignature']);
     Route::get('purchase-reports-table', [PurchaseReportController::class, 'table']);
-    Route::patch('purchase-reports/{id}/approve-item', [PurchaseReportController::class, 'approveItem']); 
+    Route::patch('purchase-reports/{id}/approve-item', [PurchaseReportController::class, 'approveItem']);
 });

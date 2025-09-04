@@ -16,7 +16,8 @@ class PurchaseReportService
      */
     public function getQuery(array $filters = []): Builder
     {
-        $query = PurchaseReport::with('user'); // eager load user
+        // Eager load all user relationships that the mapper expects
+        $query = PurchaseReport::with(['user', 'trUser', 'hodUser']);
 
         // Search by fields
         if (!empty($filters['searchTerm'])) {
@@ -73,8 +74,16 @@ class PurchaseReportService
             $data['remarks'] = array_fill(0, count($data['tag']), '');
         }
 
-        // Always set pr_status to "on_hold" on creation
-        $data['pr_status'] = 'on_hold';
+        // Set pr_status depending on item_status
+        if (isset($data['item_status']) && is_array($data['item_status'])) {
+            if (in_array('pending', $data['item_status'])) {
+                $data['pr_status'] = 'on_hold'; // at least one "pending"
+            } else {
+                $data['pr_status'] = 'on_hold_tr'; // only "pending_tr"
+            }
+        } else {
+            $data['pr_status'] = 'on_hold'; // default fallback
+        }
 
         return PurchaseReport::create($data);
     }
@@ -87,12 +96,10 @@ class PurchaseReportService
      *
      * @throws ModelNotFoundException
      */
-
     public function show(int $id): PurchaseReport
     {
-        return PurchaseReport::with('user')->findOrFail($id);
+        return PurchaseReport::with(['user', 'trUser', 'hodUser'])->findOrFail($id);
     }
-
 
     /**
      * Update a Purchase Report by ID.
@@ -110,7 +117,6 @@ class PurchaseReportService
 
         return $report;
     }
-
 
     /**
      * Delete a Purchase Report by ID.

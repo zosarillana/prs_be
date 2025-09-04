@@ -14,6 +14,7 @@ class MapUsers
             'email'      => $user->email,
             'department' => $user->department,
             'role'       => $user->role,
+            'signature'  => $user->signature,
             'created_at' => $user->created_at ? $user->created_at->format('Y-m-d H:i:s') : null,
             'updated_at' => $user->updated_at ? $user->updated_at->format('Y-m-d H:i:s') : null,
         ];
@@ -27,6 +28,7 @@ class MapUsers
             'email'      => $user->email,
             'department' => $user->department,
             'role'       => $user->role,
+            'signature'  => $user->signature,
             'created_at' => $user->created_at ? $user->created_at->format('Y-m-d') : null,
         ];
     }

@@ -4,8 +4,7 @@ namespace App\Service\User;
 
 use App\Models\User;
 use Illuminate\Support\Facades\Hash;
-use Illuminate\Validation\Rule;
-use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Storage;
 
 class UserService
 {
@@ -51,6 +50,7 @@ class UserService
         return User::find($id);
     }
 
+
     public function updateUser(User $user, array $data)
     {
         if (isset($data['name'])) {
@@ -71,6 +71,15 @@ class UserService
 
         if (isset($data['role'])) {
             $user->role = $data['role'];
+        }
+
+        // ✅ Handle signature image upload
+        if (isset($data['signature']) && $data['signature']->isValid()) {
+            // Store in /storage/app/public/signatures
+            $path = $data['signature']->store('signatures', 'public');
+
+            // Save only the URL (or path) in DB
+            $user->signature = Storage::url($path);
         }
 
         $user->save();
