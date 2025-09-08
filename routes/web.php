@@ -12,6 +12,19 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('/me', [AuthController::class, 'me']);
 });
 
+Route::get('/files/signatures/{filename}', function ($filename) {
+    $path = storage_path("app/public/signatures/{$filename}");
+
+    if (!file_exists($path)) {
+        abort(404);
+    }
+
+    return response()->file($path, [
+        'Access-Control-Allow-Origin' => '*',
+        'Access-Control-Allow-Methods' => 'GET, OPTIONS',
+    ]);
+});
+
 Route::get('/debug-broadcasting', function () {
     return [
         'default_connection' => config('broadcasting.default'),

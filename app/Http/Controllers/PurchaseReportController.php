@@ -10,6 +10,7 @@ use App\Events\PurchaseReportEvents\PurchaseReportCreated;
 use App\Service\Paginator\PaginatorService;
 use App\Service\PurchaseReport\PurchaseReportService;
 use App\Service\PurchaseReport\ApprovalPrService;
+use App\Models\PurchaseReport;
 use Illuminate\Http\Request;
 
 class PurchaseReportController extends Controller
@@ -80,8 +81,15 @@ class PurchaseReportController extends Controller
         $departments = $user->department ?? [];
         $roles = $user->role ?? [];
 
-        // Always filter by department
-        $query->whereIn('department', $departments);
+        // If user is purchasing → see ALL departments but only for_approval
+        // If user is purchasing → see ALL departments but only for_approval OR closed
+        if (in_array('purchasing', $roles)) {
+            $query->whereIn('pr_status', ['for_approval', 'closed']);
+        } else {
+            // Default: filter by user department
+            $query->whereIn('department', $departments);
+        }
+
 
         // If user is a technical reviewer
         if (in_array('technical_reviewer', $roles)) {
@@ -97,7 +105,6 @@ class PurchaseReportController extends Controller
                     ->orWhere('pr_status', 'on_hold_tr');
             });
         }
-        // else: no extra filter → all items from department(s)
 
         $result = $paginator->paginate(
             $query,
@@ -130,15 +137,15 @@ class PurchaseReportController extends Controller
     /**
      * Display a single purchase report.
      */
-      public function show($id)
+    public function show($id)
     {
-        $report = $this->purchaseReportService->show($id);
-        
-        // Use the mapper to format the response consistently
+        $report = $this->purchaseReportService->show((int) $id);
+
         $mappedReport = MapPurchaseReport::map($report);
-        
+
         return response()->json($mappedReport);
     }
+
     /**
      * Update a purchase report.
      */
@@ -181,5 +188,97 @@ class PurchaseReportController extends Controller
 
         return response()->json($report);
     }
+
+    public function updateItemStatusOnly(Request $request, $id)
+    {
+        $validated = $request->validate([
+            'index' => 'required|integer|min:0',
+            'status' => 'required|string',
+        ]);
+
+        $report = PurchaseReport::findOrFail($id);
+        $itemStatus = $report->item_status;
+        $itemStatus[$validated['index']] = $validated['status'];
+        $report->item_status = $itemStatus;
+        $report->save();
+
+        return response()->json($report);
+    }
+
+    public function updatePoNo(Request $request, $id)
+    {
+        $validated = $request->validate([
+            'po_no' => 'required|integer',
+            
+        ]);
+
+        $report = $this->purchaseReportService->updatePoNo($id, $validated['po_no']);
+
+        return response()->json([
+            'message' => 'PO number updated and status set to Closed',
+            'report' => $report,
+        ], 200);
+    }
+
+    public function summaryCounts(Request $request)
+    {
+        $user = $request->user();
+        $roles = $user->role ?? [];
+        $department = $user->department;
+
+        $counts = [];
+
+        // 🔹 Admin: show everything
+        if (in_array('admin', $roles)) {
+            $counts['on_hold'] = PurchaseReport::where('pr_status', 'on_hold')->count();
+            $counts['for_approval'] = PurchaseReport::where('pr_status', 'for_approval')->count();
+            $counts['on_hold_tr'] = PurchaseReport::where('pr_status', 'on_hold_tr')->count();
+            $counts['completed_hod_review'] = PurchaseReport::whereNotNull('hod_user_id')->count();
+            $counts['own_created'] = PurchaseReport::count(); // all created PRs
+            $counts['department_total'] = PurchaseReport::count(); // all departments
+            $counts['completed_tr'] = PurchaseReport::whereNotNull('tr_user_id')->count();
+
+            return response()->json($counts);
+        }
+
+        // 🔹 HOD role
+        if (in_array('hod', $roles)) {
+            $counts['on_hold'] = PurchaseReport::where('department', $department)
+                ->where('pr_status', 'on_hold')
+                ->count();
+
+            $counts['for_approval'] = PurchaseReport::where('department', $department)
+                ->where('pr_status', 'for_approval')
+                ->count();
+
+            $counts['on_hold_tr'] = PurchaseReport::where('department', $department)
+                ->where('pr_status', 'on_hold_tr')
+                ->count();
+
+            $counts['completed_hod_review'] = PurchaseReport::where('department', $department)
+                ->whereNotNull('hod_user_id')
+                ->count();
+        }
+
+        // 🔹 Normal USER role
+        if (in_array('user', $roles)) {
+            $counts['own_created'] = PurchaseReport::where('user_id', $user->id)->count();
+            $counts['department_total'] = PurchaseReport::where('department', $department)->count();
+        }
+
+        // 🔹 TR role
+        if (in_array('technical_reviewer', $roles)) {
+            $counts['on_hold_tr'] = PurchaseReport::where('department', $department)
+                ->where('pr_status', 'on_hold_tr')
+                ->count();
+
+            $counts['completed_tr'] = PurchaseReport::where('department', $department)
+                ->whereNotNull('tr_user_id')
+                ->count();
+        }
+
+        return response()->json($counts);
+    }
+
 
 }

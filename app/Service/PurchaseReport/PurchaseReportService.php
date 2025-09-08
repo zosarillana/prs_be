@@ -3,6 +3,7 @@
 namespace App\Service\PurchaseReport;
 
 use App\Models\PurchaseReport;
+use Carbon\Traits\Timestamp;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
 
@@ -65,7 +66,7 @@ class PurchaseReportService
         // Ensure item_status is generated if not provided
         if (!isset($data['item_status']) && isset($data['tag']) && is_array($data['tag'])) {
             $data['item_status'] = array_map(function ($tag) {
-                return str_ends_with($tag, '_tr') ? 'pending_tr' : 'pending';
+                return str_ends_with($tag, '_tr') ? 'pending' : 'pending'; //Changed 'pending_tr' : 'pending' to 'pending' : 'pending' for new conditions suggested by Manager
             }, $data['tag']);
         }
 
@@ -131,4 +132,31 @@ class PurchaseReportService
         $report = PurchaseReport::findOrFail($id);
         return $report->delete();
     }
+
+    // PurchaseReportService.php
+    public function updatePoNo($id, $poNo)
+    {
+        $report = PurchaseReport::findOrFail($id);
+        $report->po_no = $poNo;
+        $report->pr_status = 'Closed'; // ✅ set PR closed
+        $report->po_status = 'For_approval'; // ✅ initial PO status
+        $report->po_created_date = now(); // ✅ set current timestamp
+        // $report->po_approved_date = now(); // set only when approved
+        $report->save();
+
+        return $report;
+    }
+
+
+
+    public function poApproveDate($id)
+    {
+        $report = PurchaseReport::findOrFail($id);
+        $report->po_status = 'Approved'; // ✅ update status
+        $report->po_approved_date = now(); // ✅ set approval timestamp
+        $report->save();
+
+        return $report;
+    }
+
 }

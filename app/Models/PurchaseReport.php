@@ -12,6 +12,10 @@ class PurchaseReport extends Model
     protected $fillable = [
         'user_id',
         'series_no',
+        'po_no',
+        'po_status',          // ✅ added
+        'po_created_date',    // ✅ added
+        'po_approved_date',   // ✅ added
         'pr_purpose',
         'department',
         'date_submitted',
@@ -31,8 +35,8 @@ class PurchaseReport extends Model
 
     protected $casts = [
         'user_id' => 'integer',
-        'tr_user_id' => 'integer',     // Add this cast
-        'hod_user_id' => 'integer',    // Add this cast
+        'tr_user_id' => 'integer',
+        'hod_user_id' => 'integer',
         'quantity' => 'array',
         'unit' => 'array',
         'item_description' => 'array',
@@ -41,8 +45,10 @@ class PurchaseReport extends Model
         'remarks' => 'array',
         'date_submitted' => 'datetime:Y-m-d',
         'date_needed' => 'datetime:Y-m-d',
-        'tr_signed_at' => 'datetime',   // Add this cast
-        'hod_signed_at' => 'datetime',  // Add this cast
+        'tr_signed_at' => 'datetime',
+        'hod_signed_at' => 'datetime',
+        'po_created_date' => 'datetime',   // ✅ added cast
+        'po_approved_date' => 'datetime',  // ✅ added cast
     ];
 
     public function user()

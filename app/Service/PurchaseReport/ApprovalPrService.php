@@ -18,8 +18,14 @@ class ApprovalPrService
      *
      * @throws ModelNotFoundException
      */
-    public function updateItemStatus(int $id, int $index, string $status, ?string $remark, string $asRole, int $loggedUserId): PurchaseReport
-    {
+    public function updateItemStatus(
+        int $id,
+        int $index,
+        string $status,
+        ?string $remark = null,
+        ?string $asRole = null,
+        ?int $loggedUserId = null
+    ): PurchaseReport {
         $report = PurchaseReport::findOrFail($id);
 
         $itemStatus = $report->item_status ?? [];
@@ -56,12 +62,13 @@ class ApprovalPrService
             'pr_status' => $prStatus,
         ];
 
-        // Attach approver info
-        if ($asRole === 'technical_reviewer' || $asRole === 'admin') {
+        // Attach approver info only if asRole is provided
+        if ($asRole === 'technical_reviewer' || $asRole === 'both') {
             $updateData['tr_user_id'] = $loggedUserId;
             $updateData['tr_signed_at'] = now();
         }
-        if ($asRole === 'hod' || $asRole === 'admin') {
+
+        if ($asRole === 'hod' || $asRole === 'both') {
             $updateData['hod_user_id'] = $loggedUserId;
             $updateData['hod_signed_at'] = now();
         }
@@ -70,5 +77,6 @@ class ApprovalPrService
 
         return $report->fresh();
     }
+
 
 }

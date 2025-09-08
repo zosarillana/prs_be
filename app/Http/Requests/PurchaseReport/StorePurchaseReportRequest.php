@@ -16,6 +16,7 @@ class StorePurchaseReportRequest extends FormRequest
         return [
             'user_id' => 'required|integer',
             'series_no' => 'required|string|max:50',
+            'po_no' => 'nullable|integer',
             'pr_purpose' => 'required|string|max:255',
             'department' => 'required|string|max:100',
             'date_submitted' => 'required|date',
