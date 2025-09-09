@@ -51,4 +51,38 @@ class User extends Authenticatable
             'role' => 'array',
         ];
     }
+
+    // ADD THESE METHODS TO YOUR ACTUAL USER MODEL:
+    
+    /**
+     * Check if user has a specific role
+     */
+    public function hasRole(string $role): bool
+    {
+        return in_array($role, $this->role ?? []);
+    }
+
+    /**
+     * Check if user is admin
+     */
+    public function isAdmin(): bool
+    {
+        return $this->hasRole('admin');
+    }
+
+    /**
+     * Check if user has a specific department
+     */
+    public function hasDepartment(string $department): bool
+    {
+        return in_array($department, $this->department ?? []);
+    }
+
+    /**
+     * Check if user belongs to IT department
+     */
+    public function isItDepartment(): bool
+    {
+        return $this->hasDepartment('it_department');
+    }
 }

@@ -11,6 +11,8 @@ use App\Service\Paginator\PaginatorService;
 use App\Service\PurchaseReport\PurchaseReportService;
 use App\Service\PurchaseReport\ApprovalPrService;
 use App\Models\PurchaseReport;
+use App\Notifications\NewMessageNotification;
+use App\Models\User; // if you need to fetch recipients
 use Illuminate\Http\Request;
 
 class PurchaseReportController extends Controller
@@ -130,6 +132,43 @@ class PurchaseReportController extends Controller
         // Broadcast event
         event(new PurchaseReportCreated($report));
 
+        // 🔹 HODs in the same department
+        $hodRecipients = User::query()
+            ->whereJsonContains('role', 'hod')
+            ->whereJsonContains('department', $report->department)
+            ->get();
+
+        foreach ($hodRecipients as $user) {
+            $user->notify(new NewMessageNotification([
+                'title' => 'New Purchase Report Created',
+                'report_id' => $report->id,
+                'created_by' => $report->user->name ?? 'Unknown',
+                'pr_status' => $report->pr_status,
+                'po_status' => $report->po_status,
+                'user_id' => $user->id,
+                'department' => $user->department, // 🔹 include here
+                'role' => $user->role,       // optional, helps filtering
+            ]));
+
+        }
+
+        // 🔹 Admins (system-wide)
+        $adminRecipients = User::query()
+            ->whereJsonContains('role', 'admin')
+            ->get();
+
+        foreach ($adminRecipients as $admin) {
+            $admin->notify(new NewMessageNotification([
+                'title' => 'New Purchase Report Created',
+                'report_id' => $report->id,
+                'created_by' => $report->user->name ?? 'Unknown',
+                'pr_status' => $report->pr_status,
+                'po_status' => $report->po_status,
+                'user_id' => $admin->id,
+                'role' => ['admin'], // ✅ tag as admin
+            ]));
+        }
+
         return response()->json($report, 201);
     }
 
@@ -209,7 +248,7 @@ class PurchaseReportController extends Controller
     {
         $validated = $request->validate([
             'po_no' => 'required|integer',
-            
+
         ]);
 
         $report = $this->purchaseReportService->updatePoNo($id, $validated['po_no']);
