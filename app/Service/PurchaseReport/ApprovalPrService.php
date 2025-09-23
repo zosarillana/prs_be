@@ -3,21 +3,21 @@
 namespace App\Service\PurchaseReport;
 
 use App\Models\PurchaseReport;
+use App\Models\User;
+use App\Notifications\NewMessageNotification;
+use App\Service\PurchaseReport\PurchaseReportNotificationService;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
 
 class ApprovalPrService
 {
-    /**
-     * Update a specific item's status and remark inside a Purchase Report.
-     *
-     * @param  int    $id       The PurchaseReport ID
-     * @param  int    $index    The index of the item to update
-     * @param  string $status   The new status (e.g., 'approved', 'rejected')
-     * @param  string $remark   The remark to set for this item
-     * @return PurchaseReport
-     *
-     * @throws ModelNotFoundException
-     */
+
+    protected PurchaseReportNotificationService $notify;
+
+    public function __construct(PurchaseReportNotificationService $notify)
+    {
+        $this->notify = $notify;
+    }
+
     public function updateItemStatus(
         int $id,
         int $index,
@@ -43,7 +43,7 @@ class ApprovalPrService
             $remarks[$index] = $remark;
         }
 
-        // Determine PR status
+        // ✅ Determine PR status
         $hasPending = in_array('pending', $itemStatus, true);
         $hasPendingTr = in_array('pending_tr', $itemStatus, true);
 
@@ -55,14 +55,14 @@ class ApprovalPrService
             $prStatus = 'for_approval';
         }
 
-        // Prepare update data
+        // ✅ Prepare update data
         $updateData = [
             'item_status' => $itemStatus,
             'remarks' => $remarks,
             'pr_status' => $prStatus,
         ];
 
-        // Attach approver info only if asRole is provided
+        // ✅ Attach approver info
         if ($asRole === 'technical_reviewer' || $asRole === 'both') {
             $updateData['tr_user_id'] = $loggedUserId;
             $updateData['tr_signed_at'] = now();
@@ -74,9 +74,55 @@ class ApprovalPrService
         }
 
         $report->update($updateData);
+        $report->refresh();
 
-        return $report->fresh();
+        // ✅ Trigger notifications based on new PR status
+        match ($report->pr_status) {
+            'for_approval' => $this->notify->notifyPurchasingForApproval($report),
+            'on_hold_tr' => $this->notify->notifyTechnicalReviewOnHold($report),
+            default => null, // 'on_hold' might not need a notification
+        };
+
+        return $report;
     }
 
+    /**
+     * Send notifications based on PR status
+     */
+    protected function notifyByStatus(PurchaseReport $report): void
+    {
+        match ($report->pr_status) {
+            'for_approval' => $this->notify->notifyPurchasingForApproval($report),
+            'on_hold_tr' => $this->notify->notifyTechnicalReviewOnHold($report),
+            default => null,
+        };
+    }
 
+    public function updatePoNo($id, $poNo)
+    {
+        $report = PurchaseReport::findOrFail($id);
+        $report->po_no = $poNo;
+        $report->pr_status = 'Closed';
+        $report->po_status = 'For_approval';
+        $report->po_created_date = now();
+        $report->save();
+
+        // ✅ Just call the notification service
+        $this->notify->notifyPoCreated($report);
+
+        return $report;
+    }
+
+    public function poApproveDate($id)
+    {
+        $report = PurchaseReport::findOrFail($id);
+        $report->po_status = 'Approved';
+        $report->po_approved_date = now();
+        $report->save();
+
+        // ✅ Just call the notification service
+        $this->notify->notifyPoApproved($report);
+
+        return $report;
+    }
 }

@@ -3,9 +3,10 @@
 namespace App\Service\PurchaseReport;
 
 use App\Models\PurchaseReport;
-use Carbon\Traits\Timestamp;
+use App\Service\PurchaseReport\PurchaseReportNotificationService;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
+
 
 class PurchaseReportService
 {
@@ -15,6 +16,14 @@ class PurchaseReportService
      * @param  array  $filters
      * @return Builder
      */
+
+    protected PurchaseReportNotificationService $notify;
+
+    public function __construct(PurchaseReportNotificationService $notify)
+    {
+        $this->notify = $notify;
+    }
+
     public function getQuery(array $filters = []): Builder
     {
         // Eager load all user relationships that the mapper expects
@@ -114,9 +123,35 @@ class PurchaseReportService
     public function update(int $id, array $data): PurchaseReport
     {
         $report = PurchaseReport::findOrFail($id);
-        $report->update($data);
 
-        return $report;
+        // ✅ Fetch the current item_status from DB
+        $currentStatuses = $report->item_status ?? [];
+        $tags = $data['tag'] ?? $report->tag ?? [];
+
+        // ✅ Build a new item_status array
+        $newStatuses = [];
+        foreach ($currentStatuses as $idx => $status) {
+            $tag = $tags[$idx] ?? null;
+
+            // If rejected → reset to pending / pending_tr
+            if (in_array($status, ['rejected', 'rejected_tr'], true)) {
+                $newStatuses[$idx] = $tag && str_ends_with($tag, '_tr')
+                    ? 'pending_tr'
+                    : 'pending';
+            } else {
+                // Otherwise keep the existing status
+                $newStatuses[$idx] = $status;
+            }
+        }
+
+        // ✅ Merge the computed statuses into the update payload
+        $data['item_status'] = $newStatuses;
+
+        // ✅ Now update the model
+        $report->fill($data);
+        $report->save();
+
+        return $report->fresh(); // always return fresh DB state
     }
 
     /**
@@ -131,32 +166,6 @@ class PurchaseReportService
     {
         $report = PurchaseReport::findOrFail($id);
         return $report->delete();
-    }
-
-    // PurchaseReportService.php
-    public function updatePoNo($id, $poNo)
-    {
-        $report = PurchaseReport::findOrFail($id);
-        $report->po_no = $poNo;
-        $report->pr_status = 'Closed'; // ✅ set PR closed
-        $report->po_status = 'For_approval'; // ✅ initial PO status
-        $report->po_created_date = now(); // ✅ set current timestamp
-        // $report->po_approved_date = now(); // set only when approved
-        $report->save();
-
-        return $report;
-    }
-
-
-
-    public function poApproveDate($id)
-    {
-        $report = PurchaseReport::findOrFail($id);
-        $report->po_status = 'Approved'; // ✅ update status
-        $report->po_approved_date = now(); // ✅ set approval timestamp
-        $report->save();
-
-        return $report;
     }
 
 }

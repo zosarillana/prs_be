@@ -16,6 +16,7 @@ class PurchaseReport extends Model
         'po_status',          // ✅ added
         'po_created_date',    // ✅ added
         'po_approved_date',   // ✅ added
+        'purchaser_id',
         'pr_purpose',
         'department',
         'date_submitted',
@@ -64,5 +65,28 @@ class PurchaseReport extends Model
     public function hodUser()
     {
         return $this->belongsTo(User::class, 'hod_user_id');
+    }
+    public function purchaserUser()
+    {
+        return $this->belongsTo(User::class, 'purchaser_id');
+    }
+
+     protected static function booted()
+    {
+        static::created(function ($model) {
+            auditLog('created', $model, null, $model->getAttributes());
+        });
+
+        static::updated(function ($model) {
+            // Only log if there are actual changes
+            $changes = $model->getChanges();
+            if (!empty($changes)) {
+                auditLog('updated', $model, $model->getOriginal(), $changes);
+            }
+        });
+
+        static::deleted(function ($model) {
+            auditLog('deleted', $model, $model->getOriginal(), null);
+        });
     }
 }

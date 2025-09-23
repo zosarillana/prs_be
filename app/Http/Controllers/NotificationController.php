@@ -24,15 +24,23 @@ class NotificationController extends Controller
         $user = $request->user();
 
         if (in_array('admin', $user->role ?? [])) {
-            // 🔹 Admin sees notifications meant for all admins under 'personal'
-            $notifications =
-                $this->notificationService->getAllForAdmins();
+            // ✅ Only THIS admin’s own notifications where role is admin
+            $notifications = $user->notifications()
+                ->whereJsonContains('data->role', 'admin')
+                ->orderBy('created_at', 'desc')
+                ->get();
 
         } elseif (in_array('hod', $user->role ?? [])) {
+            // ✅ Only THIS HOD’s own notifications where role is hod + department matches
             $department = is_array($user->department) ? $user->department[0] : $user->department;
-            $notifications = $this->notificationService->getAllForDepartment($department);
+            $notifications = $user->notifications()
+                ->whereJsonContains('data->role', 'hod')
+                ->whereJsonContains('data->department', $department)
+                ->orderBy('created_at', 'desc')
+                ->get();
+
         } else {
-            // 🔹 Normal user only sees their own
+            // ✅ Regular user gets all their personal notifications
             $notifications = $this->notificationService->getAllForUser($user);
         }
 
@@ -44,20 +52,48 @@ class NotificationController extends Controller
         $user = $request->user();
 
         if (in_array('admin', $user->role ?? [])) {
-            // Admin only sees admin-tagged notifications
-            $counts = $this->notificationService->getCountsForAdmins();
+            // 🔹 SAME query as index() for admins
+            $notifications = $user->notifications()
+                ->whereJsonContains('data->role', 'admin')
+                ->orderBy('created_at', 'desc')
+                ->get();
+
+            $total = $notifications->count();
+            $unread = $notifications->whereNull('read_at')->count();
+            $read = $total - $unread;
+
+            $counts = [
+                'total' => $total,
+                'unread' => $unread,
+                'read' => $read,
+            ];
+
         } elseif (in_array('hod', $user->role ?? [])) {
-            // HOD may have one or multiple departments
-            $departments = $user->department;
-            $counts = $this->notificationService->getCountsForDepartment($departments);
+            // 🔹 SAME query as index() for HODs
+            $department = is_array($user->department) ? $user->department[0] : $user->department;
+
+            $notifications = $user->notifications()
+                ->whereJsonContains('data->role', 'hod')
+                ->whereJsonContains('data->department', $department)
+                ->orderBy('created_at', 'desc')
+                ->get();
+
+            $total = $notifications->count();
+            $unread = $notifications->whereNull('read_at')->count();
+            $read = $total - $unread;
+
+            $counts = [
+                'total' => $total,
+                'unread' => $unread,
+                'read' => $read,
+            ];
+
         } else {
-            // Normal user only sees their own
             $counts = $this->notificationService->getCountsForUser($user);
         }
 
         return response()->json($counts);
     }
-
 
     /**
      * Get notification counts (total, unread, read)
@@ -84,7 +120,6 @@ class NotificationController extends Controller
             'read' => $read,
         ];
     }
-
 
     /**
      * Get role/department/status summary
@@ -114,6 +149,7 @@ class NotificationController extends Controller
         }
 
         $updated = $this->notificationService->markAsRead($notification);
+
         return response()->json($updated);
     }
 

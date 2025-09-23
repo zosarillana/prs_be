@@ -22,17 +22,18 @@ class StorePurchaseReportRequest extends FormRequest
             'date_submitted' => 'required|date',
             'date_needed' => 'required|date|after_or_equal:date_submitted',
 
-            'quantity' => 'required|array',
-            'unit' => 'required|array',
-            'item_description' => 'required|array',
+            'quantity.*' => 'required|numeric|min:1',     // or min:0 if 0 is allowed
+            'unit.*' => 'required|string|max:50',
+            'item_description.*' => 'required|string|max:255',
+            
             'tag' => 'nullable|array',
             'item_status' => 'nullable|array',
             'pr_status' => 'nullable|string|max:100',
             'remarks' => 'nullable|array',
         ];
 
-        
+
     }
 
-  
+
 }

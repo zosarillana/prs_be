@@ -2,59 +2,47 @@
 
 namespace App\Http\Controllers;
 
-
 use App\Helpers\MapPurchaseReport;
+use App\Helpers\PrRoleFilters;
+use App\Helpers\QueryHelper;
 use App\Http\Requests\PurchaseReport\StorePurchaseReportRequest;
 use App\Http\Requests\PurchaseReport\UpdatePurchaseReportRequest;
-use App\Events\PurchaseReportEvents\PurchaseReportCreated;
-use App\Service\Paginator\PaginatorService;
-use App\Service\PurchaseReport\PurchaseReportService;
-use App\Service\PurchaseReport\ApprovalPrService;
 use App\Models\PurchaseReport;
+use App\Models\User;
 use App\Notifications\NewMessageNotification;
-use App\Models\User; // if you need to fetch recipients
+use App\Service\Paginator\PaginatorService;
+use App\Service\PurchaseReport\ApprovalPrService;
+use App\Service\PurchaseReport\PurchaseReportNotificationService;
+use App\Service\PurchaseReport\PurchaseReportService;
 use Illuminate\Http\Request;
 
 class PurchaseReportController extends Controller
 {
     protected $purchaseReportService;
+
     protected $approvalPrService;
+
+    protected $notificationService; // ✅
 
     public function __construct(
         PurchaseReportService $purchaseReportService,
-        ApprovalPrService $approvalPrService
+        ApprovalPrService $approvalPrService,
+        PurchaseReportNotificationService $notificationService // ✅
     ) {
         $this->purchaseReportService = $purchaseReportService;
         $this->approvalPrService = $approvalPrService;
+        $this->notificationService = $notificationService; // ✅
     }
+
     /**
      * Display a listing of purchase reports.
      */
+    public function index(Request $request, PaginatorService $paginator, PurchaseReportService $purchaseReportService)
+    {
+        $result = QueryHelper::buildAndPaginate($request, $purchaseReportService, $paginator);
 
-    public function index(
-        Request $request,
-        PaginatorService $paginator,
-        PurchaseReportService $purchaseReportService
-    ) {
-        // Build query via service
-        $query = $purchaseReportService->getQuery([
-            'searchTerm' => $request->input('searchTerm'),
-            'fromDate' => $request->input('fromDate'),
-            'toDate' => $request->input('toDate'),
-            'sortBy' => $request->input('sortBy', 'id'),
-            'sortOrder' => $request->input('sortOrder', 'asc'),
-        ]);
-
-        // Paginate results
-        $result = $paginator->paginate(
-            $query,
-            $request->input('pageNumber', 1),
-            $request->input('pageSize', 10)
-        );
-
-        // Transform each item using the helper
         $result['items'] = collect($result['items'])
-            ->map(fn($report) => MapPurchaseReport::map($report))
+            ->map(fn ($report) => MapPurchaseReport::map($report))
             ->toArray();
 
         return response()->json($result);
@@ -63,64 +51,38 @@ class PurchaseReportController extends Controller
     /**
      * Display a listing of purchase reports table.
      */
-
-
     public function table(
         Request $request,
         PaginatorService $paginator,
         PurchaseReportService $purchaseReportService
     ) {
-        $user = $request->user(); // Authenticated user
+        $user = $request->user();
 
-        $query = $purchaseReportService->getQuery([
-            'searchTerm' => $request->input('searchTerm'),
-            'fromDate' => $request->input('fromDate'),
-            'toDate' => $request->input('toDate'),
-            'sortBy' => $request->input('sortBy', 'id'),
-            'sortOrder' => $request->input('sortOrder', 'asc'),
-        ]);
+        // ✅ QueryHelper now provides query_params
+        $result = QueryHelper::buildAndPaginate(
+            $request,
+            $purchaseReportService,
+            $paginator
+        );
 
-        $departments = $user->department ?? [];
-        $roles = $user->role ?? [];
-
-        // If user is purchasing → see ALL departments but only for_approval
-        // If user is purchasing → see ALL departments but only for_approval OR closed
-        if (in_array('purchasing', $roles)) {
-            $query->whereIn('pr_status', ['for_approval', 'closed']);
-        } else {
-            // Default: filter by user department
-            $query->whereIn('department', $departments);
-        }
-
-
-        // If user is a technical reviewer
-        if (in_array('technical_reviewer', $roles)) {
-            $query->where(function ($q) {
-                $q->where(function ($sub) {
-                    // pr_status = for_approval AND tag ends with "_tr"
-                    $sub->where('pr_status', 'for_approval')
-                        ->where(function ($tagSub) {
-                            // if tags are stored as JSON array
-                            $tagSub->whereRaw("JSON_SEARCH(JSON_EXTRACT(tag, '$'), 'one', '%_tr') IS NOT NULL");
-                        });
-                })
-                    ->orWhere('pr_status', 'on_hold_tr');
-            });
-        }
+        // Apply role filters AFTER QueryHelper built the query
+        $filtered = PrRoleFilters::applyRoleFilters(
+            $purchaseReportService->getQuery($result['query_params']),
+            $user
+        );
 
         $result = $paginator->paginate(
-            $query,
+            $filtered,
             $request->input('pageNumber', 1),
             $request->input('pageSize', 10)
         );
 
         $result['items'] = collect($result['items'])
-            ->map(fn($report) => MapPurchaseReport::mapTable($report))
+            ->map(fn ($r) => MapPurchaseReport::mapTable($r))
             ->toArray();
 
         return response()->json($result);
     }
-
 
     /**
      * Store a newly created purchase report.
@@ -129,49 +91,11 @@ class PurchaseReportController extends Controller
     {
         $report = $this->purchaseReportService->store($request->validated());
 
-        // Broadcast event
-        event(new PurchaseReportCreated($report));
-
-        // 🔹 HODs in the same department
-        $hodRecipients = User::query()
-            ->whereJsonContains('role', 'hod')
-            ->whereJsonContains('department', $report->department)
-            ->get();
-
-        foreach ($hodRecipients as $user) {
-            $user->notify(new NewMessageNotification([
-                'title' => 'New Purchase Report Created',
-                'report_id' => $report->id,
-                'created_by' => $report->user->name ?? 'Unknown',
-                'pr_status' => $report->pr_status,
-                'po_status' => $report->po_status,
-                'user_id' => $user->id,
-                'department' => $user->department, // 🔹 include here
-                'role' => $user->role,       // optional, helps filtering
-            ]));
-
-        }
-
-        // 🔹 Admins (system-wide)
-        $adminRecipients = User::query()
-            ->whereJsonContains('role', 'admin')
-            ->get();
-
-        foreach ($adminRecipients as $admin) {
-            $admin->notify(new NewMessageNotification([
-                'title' => 'New Purchase Report Created',
-                'report_id' => $report->id,
-                'created_by' => $report->user->name ?? 'Unknown',
-                'pr_status' => $report->pr_status,
-                'po_status' => $report->po_status,
-                'user_id' => $admin->id,
-                'role' => ['admin'], // ✅ tag as admin
-            ]));
-        }
+        // ✅ Send all creation-related notifications
+        $this->notificationService->notifyOnCreated($report);
 
         return response()->json($report, 201);
     }
-
 
     /**
      * Display a single purchase report.
@@ -191,6 +115,7 @@ class PurchaseReportController extends Controller
     public function update(UpdatePurchaseReportRequest $request, $id)
     {
         $report = $this->purchaseReportService->update($id, $request->validated());
+
         return response()->json($report);
     }
 
@@ -200,6 +125,7 @@ class PurchaseReportController extends Controller
     public function destroy($id)
     {
         $this->purchaseReportService->delete($id);
+
         return response()->json(['message' => 'Deleted successfully']);
     }
 
@@ -210,7 +136,7 @@ class PurchaseReportController extends Controller
     {
         $validated = $request->validate([
             'index' => 'required|integer|min:0',
-            'status' => 'required|string|in:approved,rejected',
+            'status' => 'required|string|in:approved,rejected,pending_tr',
             'remark' => 'nullable|string',
             'as_role' => 'nullable|string|in:technical_reviewer,hod,both',
             'logged_user_id' => 'required|integer|exists:users,id', // ✅ add this
@@ -237,26 +163,36 @@ class PurchaseReportController extends Controller
 
         $report = PurchaseReport::findOrFail($id);
         $itemStatus = $report->item_status;
+
         $itemStatus[$validated['index']] = $validated['status'];
         $report->item_status = $itemStatus;
+
+        // Determine if all TR tags are pending
+        $tags = $report->tag;
+        $allTrOnHold = true;
+
+        foreach ($tags as $i => $tag) {
+            if (str_ends_with($tag, '_tr')) {
+                if (($itemStatus[$i] ?? null) !== 'pending_tr') {
+                    $allTrOnHold = false;
+                    break;
+                }
+            }
+        }
+
+        if ($allTrOnHold) {
+            $report->pr_status = 'on_hold_tr';
+        }
+
         $report->save();
+        $report->refresh();
+
+        // ✅ Trigger notification if needed
+        if ($report->pr_status === 'on_hold_tr') {
+            $this->notificationService->notifyTechnicalOnHold($report);
+        }
 
         return response()->json($report);
-    }
-
-    public function updatePoNo(Request $request, $id)
-    {
-        $validated = $request->validate([
-            'po_no' => 'required|integer',
-
-        ]);
-
-        $report = $this->purchaseReportService->updatePoNo($id, $validated['po_no']);
-
-        return response()->json([
-            'message' => 'PO number updated and status set to Closed',
-            'report' => $report,
-        ], 200);
     }
 
     public function summaryCounts(Request $request)
@@ -316,8 +252,89 @@ class PurchaseReportController extends Controller
                 ->count();
         }
 
+        // 🔹 Purchasing role
+        if (in_array('purchasing', $roles)) {
+            $counts['for_approval'] = PurchaseReport::where('pr_status', 'for_approval')->count();
+            $counts['closed'] = PurchaseReport::where('pr_status', 'closed')->count();
+        }
+
         return response()->json($counts);
     }
 
+    public function updatePoNo(Request $request, $id)
+    {
+        $validated = $request->validate([
+            'po_no' => 'required|integer',
+        ]);
 
+        $report = $this->approvalPrService->updatePoNo($id, $validated['po_no']);
+
+        // 🔹 Notify admins + purchasing + HODs (works for JSON or string roles)
+        $recipients = User::query()
+            ->whereJsonContains('role', 'admin')
+            ->orWhereJsonContains('role', 'purchasing')
+            ->orWhereJsonContains('role', 'hod')
+            ->get();
+
+        foreach ($recipients as $user) {
+            $user->notify(new NewMessageNotification([
+                'title' => 'New PO Created',
+                'report_id' => $report->id,
+                'po_no' => $report->po_no,
+                'created_by' => $report->user->name ?? 'Unknown',
+                'pr_status' => $report->pr_status,
+                'po_status' => $report->po_status,
+                'user_id' => $user->id,
+                'role' => $user->role,
+            ]));
+        }
+
+        return response()->json([
+            'message' => 'PO number updated and status set to Closed',
+            'report' => $report,
+        ], 200);
+    }
+
+    // public function poApproveDate($id)
+    // {
+    //     // ✅ Approve the PO using your service
+    //     $report = $this->approvalPrService->poApproveDate($id);
+
+    //     // ✅ Set purchaser_id as the logged-in user's ID
+    //     $report->purchaser_id = auth()->id(); // or request()->user()->id
+    //     $report->save();
+
+    //     // ✅ Notify Admin + Purchasing + HOD
+    //     $this->notificationService->notifyPoApproved($report);
+
+    //     return response()->json([
+    //         'message' => 'PO approved successfully',
+    //         'report' => $report,
+    //     ], 200);
+    // }
+
+    public function poApproveDate(Request $request, $id)
+    {
+        $validated = $request->validate([
+            'date' => 'required|date',
+            'status' => 'required|string|in:approved,rejected,pending_tr,canceled',
+        ]);
+
+        // Approve the PO using your service
+        $report = $this->approvalPrService->poApproveDate($id);
+
+        // Set purchaser_id as the logged-in user's ID
+        $report->purchaser_id = auth()->id();
+        $report->po_approved_date = $validated['date']; // store the date
+        $report->po_status = $validated['status'];      // store the status
+        $report->save();
+
+        // Notify Admin + Purchasing + HOD
+        $this->notificationService->notifyPoApproved($report);
+
+        return response()->json([
+            'message' => 'PO approved successfully',
+            'report' => $report,
+        ], 200);
+    }
 }

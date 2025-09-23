@@ -2,13 +2,14 @@
 
 namespace App\Http\Controllers;
 
-use Illuminate\Http\Request;
-use App\Service\User\UserService;
-use App\Service\Paginator\PaginatorService;
-use Illuminate\Validation\Rule;
 use App\Helpers\MapUsers;
-use Illuminate\Support\Facades\Log;
+use App\Service\Paginator\PaginatorService;
+use App\Service\User\UserService;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Hash;
+use Illuminate\Validation\Rules\Password;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Validation\Rule;
 use Intervention\Image\Laravel\Facades\Image;
 
 class UserController extends Controller
@@ -41,7 +42,7 @@ class UserController extends Controller
 
         // Optionally map/transform each user (like MapPurchaseReport)
         $result['items'] = collect($result['items'])
-            ->map(fn($user) => MapUsers::mapTable($user))
+            ->map(fn ($user) => MapUsers::mapTable($user))
             ->toArray();
 
         return response()->json($result);
@@ -57,6 +58,9 @@ class UserController extends Controller
 
         $user = $this->userService->createUser($validated);
 
+        // 👉 Add audit log
+        auditLog('created_user', $user, null, $user->toArray());
+
         return response()->json($user, 201);
     }
 
@@ -64,7 +68,7 @@ class UserController extends Controller
     {
         $user = $this->userService->getUserById($id);
 
-        if (!$user) {
+        if (! $user) {
             return response()->json(['message' => 'User not found'], 404);
         }
 
@@ -73,46 +77,39 @@ class UserController extends Controller
 
     public function update(Request $request, string $id)
     {
-        Log::info('Request headers', $request->headers->all());
-        Log::info('Request all', $request->all());
-        Log::info('Request files', $request->files->all());
-
         $user = $this->userService->getUserById($id);
-        if (!$user) {
+        if (! $user) {
             return response()->json(['message' => 'User not found'], 404);
         }
 
-        // Validate form fields (without file)
         $validated = $request->validate([
             'name' => 'sometimes|string|max:255',
             'email' => ['sometimes', 'email', Rule::unique('users')->ignore($user->id)],
-            'password' => 'sometimes|string|min:6|confirmed',
+            'password' => ['sometimes', 'confirmed', Password::defaults()], // Updated validation
             'department' => 'sometimes|array',
             'role' => 'sometimes|array',
         ]);
 
-        // Get the file separately
         $file = $request->file('signature');
-
-        // Merge file into data array if exists
         if ($file) {
             $validated['signature'] = $file;
         }
 
-        $file = $request->file('signature');
+        // 👉 Capture old values before update
+        $oldValues = $user->toArray();
 
-        if ($file) {
-            Log::info("Uploaded signature file info:", [
-                'original_name' => $file->getClientOriginalName(),
-                'size' => $file->getSize(),
-                'mime_type' => $file->getMimeType(),
-                'is_valid' => $file->isValid(),
-            ]);
-        } else {
-            Log::info("No signature file uploaded");
-        }
+        // Remove password from oldValues for security
+        unset($oldValues['password']);
 
         $user = $this->userService->updateUser($user, $validated);
+
+        // 👉 Log only the changed fields (exclude password from changes log)
+        $changes = array_intersect_key($user->getChanges(), $validated);
+        if (isset($changes['password'])) {
+            $changes['password'] = '[UPDATED]'; // Don't log actual password
+        }
+
+        auditLog('updated_user', $user, $oldValues, $changes);
 
         return response()->json($user, 200);
     }
@@ -120,44 +117,75 @@ class UserController extends Controller
     public function updateSignature(Request $request, string $id)
     {
         $user = $this->userService->getUserById($id);
-        if (!$user) {
+        if (! $user) {
             return response()->json(['message' => 'User not found'], 404);
         }
 
         $file = $request->file('signature');
         if ($file && $file->isValid()) {
-            // Create a unique filename
-            $filename = 'signature_' . $id . '_' . time() . '.png';
+            $oldValues = $user->only('signature'); // old signature path
 
-            // Resize the image to 577px width x 433px height
+            $filename = 'signature_'.$id.'_'.time().'.png';
             $image = Image::read($file)
                 ->resize(577, 433)
-                ->toPng(false); // false = no interlacing
-
-            // Store the resized image
-            $path = 'signatures/' . $filename;
+                ->toPng(false);
+            $path = 'signatures/'.$filename;
             Storage::disk('public')->put($path, $image);
 
-            // Update user signature path
             $user->signature = Storage::url($path);
             $user->save();
 
+            // 👉 Audit the signature update
+            auditLog('updated_user_signature', $user, $oldValues, $user->only('signature'));
+
             return response()->json($user, 200);
-        } else {
-            return response()->json(['message' => 'No signature file uploaded'], 400);
         }
+
+        return response()->json(['message' => 'No signature file uploaded'], 400);
     }
 
     public function destroy(string $id)
     {
         $user = $this->userService->getUserById($id);
 
-        if (!$user) {
+        if (! $user) {
             return response()->json(['message' => 'User not found'], 404);
         }
 
+        // 👉 Capture old values before delete
+        $oldValues = $user->toArray();
+
         $this->userService->deleteUser($user);
 
+        // 👉 Log deletion
+        auditLog('deleted_user', $user, $oldValues, null);
+
         return response()->json(['message' => 'User deleted successfully'], 200);
+    }
+
+    public function updatePassword(Request $request, string $id)
+    {
+        $user = $this->userService->getUserById($id);
+        if (! $user) {
+            return response()->json(['message' => 'User not found'], 404);
+        }
+
+        $validated = $request->validate([
+            'password' => ['required', 'confirmed', Password::defaults()],
+        ]);
+
+        // 👉 Capture old values before update (without showing actual password)
+        $oldValues = ['password_updated' => false];
+
+        // Update password using UserService or directly
+        $user->password = Hash::make($validated['password']);
+        $user->save();
+
+        // 👉 Log the password update
+        auditLog('updated_user_password', $user, $oldValues, ['password_updated' => true]);
+
+        return response()->json([
+            'message' => 'Password updated successfully',
+        ], 200);
     }
 }
