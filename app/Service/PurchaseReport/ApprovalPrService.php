@@ -3,14 +3,9 @@
 namespace App\Service\PurchaseReport;
 
 use App\Models\PurchaseReport;
-use App\Models\User;
-use App\Notifications\NewMessageNotification;
-use App\Service\PurchaseReport\PurchaseReportNotificationService;
-use Illuminate\Database\Eloquent\ModelNotFoundException;
 
 class ApprovalPrService
 {
-
     protected PurchaseReportNotificationService $notify;
 
     public function __construct(PurchaseReportNotificationService $notify)
@@ -31,10 +26,10 @@ class ApprovalPrService
         $itemStatus = $report->item_status ?? [];
         $remarks = $report->remarks ?? [];
 
-        if (!is_array($itemStatus)) {
+        if (! is_array($itemStatus)) {
             $itemStatus = [];
         }
-        if (!is_array($remarks)) {
+        if (! is_array($remarks)) {
             $remarks = [];
         }
 
@@ -108,6 +103,21 @@ class ApprovalPrService
         $report->save();
 
         // ✅ Just call the notification service
+        $this->notify->notifyPoCreated($report);
+
+        return $report;
+    }
+
+    // In ApprovalPrService.php
+    public function cancelPoNo($id)
+    {
+        $report = PurchaseReport::findOrFail($id);
+        $report->po_no = null;
+        $report->pr_status = 'Cancelled';
+        $report->po_status = 'Cancelled';
+        $report->po_created_date = now();
+        $report->save();
+
         $this->notify->notifyPoCreated($report);
 
         return $report;

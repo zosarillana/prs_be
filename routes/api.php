@@ -23,6 +23,7 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('purchase-reports-table', [PurchaseReportController::class, 'table']);
     Route::patch('purchase-reports/{id}/update-item-status-only', [PurchaseReportController::class, 'updateItemStatusOnly']);
     Route::patch('purchase-reports/{id}/po-no', [PurchaseReportController::class, 'updatePoNo']);
+    Route::patch('purchase-reports/{id}/cancel-po-no', [PurchaseReportController::class, 'cancelPoNo']);
     Route::patch('purchase-reports/{id}/approve-item', [PurchaseReportController::class, 'approveItem']);
     Route::post('/purchase-reports/{id}/po-approve-date', [PurchaseReportController::class, 'poApproveDate']);
 

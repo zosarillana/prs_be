@@ -58,16 +58,33 @@ class PurchaseReportController extends Controller
     ) {
         $user = $request->user();
 
-        // ✅ QueryHelper now provides query_params
+        // ✅ If you still need QueryHelper for pagination params, keep it,
+        // but also merge in all request filters so statusTerm is preserved.
         $result = QueryHelper::buildAndPaginate(
             $request,
             $purchaseReportService,
             $paginator
         );
 
-        // Apply role filters AFTER QueryHelper built the query
+        // ✅ Merge in the raw request filters to be sure statusTerm passes through
+        $queryParams = array_merge(
+            $result['query_params'] ?? [],
+            $request->only([
+                'searchTerm',
+                'statusTerm',
+                'submittedFrom',
+                'submittedTo',
+                'neededFrom',
+                'neededTo',
+                'fromDate',
+                'toDate',
+                'sortBy',
+                'sortOrder',
+            ])
+        );
+
         $filtered = PrRoleFilters::applyRoleFilters(
-            $purchaseReportService->getQuery($result['query_params']),
+            $purchaseReportService->getQuery($queryParams),
             $user
         );
 
@@ -208,7 +225,11 @@ class PurchaseReportController extends Controller
             $counts['on_hold'] = PurchaseReport::where('pr_status', 'on_hold')->count();
             $counts['for_approval'] = PurchaseReport::where('pr_status', 'for_approval')->count();
             $counts['on_hold_tr'] = PurchaseReport::where('pr_status', 'on_hold_tr')->count();
+            $counts['closed_pr'] = PurchaseReport::where('pr_status', 'closed')->count();
+            $counts['for_ceo_approval'] = PurchaseReport::where('po_status', 'for_approval')->count();
+            $counts['approved_po'] = PurchaseReport::where('po_status', 'approved')->count();
             $counts['completed_hod_review'] = PurchaseReport::whereNotNull('hod_user_id')->count();
+            $counts['completed_tr_review'] = PurchaseReport::whereNotNull('tr_user_id')->count();
             $counts['own_created'] = PurchaseReport::count(); // all created PRs
             $counts['department_total'] = PurchaseReport::count(); // all departments
             $counts['completed_tr'] = PurchaseReport::whereNotNull('tr_user_id')->count();
@@ -233,12 +254,16 @@ class PurchaseReportController extends Controller
             $counts['completed_hod_review'] = PurchaseReport::where('department', $department)
                 ->whereNotNull('hod_user_id')
                 ->count();
+
+            $counts['department_total'] = PurchaseReport::count(); // all departments
         }
 
         // 🔹 Normal USER role
         if (in_array('user', $roles)) {
             $counts['own_created'] = PurchaseReport::where('user_id', $user->id)->count();
             $counts['department_total'] = PurchaseReport::where('department', $department)->count();
+            $counts['for_approval'] = PurchaseReport::where('pr_status', 'for_approval')->count();
+            $counts['on_hold'] = PurchaseReport::where('pr_status', 'on_hold')->count();
         }
 
         // 🔹 TR role
@@ -250,12 +275,16 @@ class PurchaseReportController extends Controller
             $counts['completed_tr'] = PurchaseReport::where('department', $department)
                 ->whereNotNull('tr_user_id')
                 ->count();
+            $counts['for_approval'] = PurchaseReport::where('pr_status', 'for_approval')->count();
         }
 
         // 🔹 Purchasing role
         if (in_array('purchasing', $roles)) {
+            $counts['closed_pr'] = PurchaseReport::where('pr_status', 'closed')->count();
             $counts['for_approval'] = PurchaseReport::where('pr_status', 'for_approval')->count();
             $counts['closed'] = PurchaseReport::where('pr_status', 'closed')->count();
+            $counts['approved_po'] = PurchaseReport::where('po_status', 'approved')->count();
+            $counts['for_ceo_approval'] = PurchaseReport::where('po_status', 'for_approval')->count();
         }
 
         return response()->json($counts);
@@ -291,6 +320,35 @@ class PurchaseReportController extends Controller
 
         return response()->json([
             'message' => 'PO number updated and status set to Closed',
+            'report' => $report,
+        ], 200);
+    }
+
+    public function cancelPoNo(Request $request, $id)
+    {
+        $report = $this->approvalPrService->cancelPoNo($id);
+
+        $recipients = User::query()
+            ->whereJsonContains('role', 'admin')
+            ->orWhereJsonContains('role', 'purchasing')
+            ->orWhereJsonContains('role', 'hod')
+            ->get();
+
+        foreach ($recipients as $user) {
+            $user->notify(new NewMessageNotification([
+                'title' => 'PO Cancelled',
+                'report_id' => $report->id,
+                'po_no' => $report->po_no, // will be null
+                'created_by' => $report->user->name ?? 'Unknown',
+                'pr_status' => $report->pr_status,
+                'po_status' => $report->po_status,
+                'user_id' => $user->id,
+                'role' => $user->role,
+            ]));
+        }
+
+        return response()->json([
+            'message' => 'PO number cancelled successfully',
             'report' => $report,
         ], 200);
     }
