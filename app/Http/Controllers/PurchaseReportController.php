@@ -262,8 +262,16 @@ class PurchaseReportController extends Controller
         if (in_array('user', $roles)) {
             $counts['own_created'] = PurchaseReport::where('user_id', $user->id)->count();
             $counts['department_total'] = PurchaseReport::where('department', $department)->count();
-            $counts['for_approval'] = PurchaseReport::where('pr_status', 'for_approval')->count();
-            $counts['on_hold'] = PurchaseReport::where('pr_status', 'on_hold')->count();
+            $counts['for_approval'] = PurchaseReport::where('department', $department)
+                ->where('pr_status', 'for_approval')
+                ->count();
+
+            $counts['on_hold'] = PurchaseReport::where('department', $department)
+                ->where('pr_status', 'on_hold')
+                ->count();
+            $counts['on_hold_tr'] = PurchaseReport::where('department', $department)
+                ->where('pr_status', 'on_hold_tr')
+                ->count();
         }
 
         // 🔹 TR role
