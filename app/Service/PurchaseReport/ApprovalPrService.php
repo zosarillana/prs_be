@@ -3,7 +3,7 @@
 namespace App\Service\PurchaseReport;
 
 use App\Models\PurchaseReport;
-
+use App\Events\Global\GlobalPurchaseReportApprovalUpdated;
 class ApprovalPrService
 {
     protected PurchaseReportNotificationService $notify;
@@ -78,6 +78,7 @@ class ApprovalPrService
             default => null, // 'on_hold' might not need a notification
         };
 
+        event(new GlobalPurchaseReportApprovalUpdated($report, 'item_approved'));
         return $report;
     }
 
@@ -104,7 +105,8 @@ class ApprovalPrService
 
         // ✅ Just call the notification service
         $this->notify->notifyPoCreated($report);
-
+        
+        event(new GlobalPurchaseReportApprovalUpdated($report, 'po_created'));
         return $report;
     }
 
@@ -119,7 +121,7 @@ class ApprovalPrService
         $report->save();
 
         $this->notify->notifyPoCreated($report);
-
+        event(new GlobalPurchaseReportApprovalUpdated($report, 'po_cancelled'));
         return $report;
     }
 
@@ -132,7 +134,7 @@ class ApprovalPrService
 
         // ✅ Just call the notification service
         $this->notify->notifyPoApproved($report);
-
+        event(new GlobalPurchaseReportApprovalUpdated($report, 'po_approved'));
         return $report;
     }
 }

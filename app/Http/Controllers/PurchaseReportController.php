@@ -353,24 +353,6 @@ class PurchaseReportController extends Controller
         ], 200);
     }
 
-    // public function poApproveDate($id)
-    // {
-    //     // ✅ Approve the PO using your service
-    //     $report = $this->approvalPrService->poApproveDate($id);
-
-    //     // ✅ Set purchaser_id as the logged-in user's ID
-    //     $report->purchaser_id = auth()->id(); // or request()->user()->id
-    //     $report->save();
-
-    //     // ✅ Notify Admin + Purchasing + HOD
-    //     $this->notificationService->notifyPoApproved($report);
-
-    //     return response()->json([
-    //         'message' => 'PO approved successfully',
-    //         'report' => $report,
-    //     ], 200);
-    // }
-
     public function poApproveDate(Request $request, $id)
     {
         $validated = $request->validate([

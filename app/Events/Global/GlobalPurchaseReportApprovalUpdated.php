@@ -7,19 +7,22 @@ use Illuminate\Broadcasting\InteractsWithSockets;
 use Illuminate\Contracts\Broadcasting\ShouldBroadcast;
 use Illuminate\Foundation\Events\Dispatchable;
 use Illuminate\Queue\SerializesModels;
+use App\Models\PurchaseReport;
 
-class GlobalPurchaseReportCreated implements ShouldBroadcast
+class GlobalPurchaseReportApprovalUpdated implements ShouldBroadcast
 {
     use Dispatchable, InteractsWithSockets, SerializesModels;
 
     public $report;
+    public $action; // e.g. item_approved, po_created, po_cancelled, po_approved
 
     /**
      * Create a new event instance.
      */
-    public function __construct($report)
+    public function __construct(PurchaseReport $report, string $action = 'approval_updated')
     {
         $this->report = $report;
+        $this->action = $action;
     }
 
     /**
@@ -27,19 +30,19 @@ class GlobalPurchaseReportCreated implements ShouldBroadcast
      */
     public function broadcastOn(): Channel
     {
-        return new Channel('purchase-report-global'); // Public channel for all users
+        return new Channel('purchase-report-approval-global');
     }
 
     /**
-     * The event's broadcast name.
+     * Broadcast event name
      */
     public function broadcastAs(): string
     {
-        return 'GlobalPurchaseReportCreated';
+        return 'GlobalPurchaseReportApprovalUpdated';
     }
 
     /**
-     * Get the data to broadcast.
+     * Data to broadcast
      */
     public function broadcastWith(): array
     {
@@ -50,12 +53,14 @@ class GlobalPurchaseReportCreated implements ShouldBroadcast
             'department' => $this->report->department ?? null,
             'pr_status' => $this->report->pr_status,
             'po_status' => $this->report->po_status,
+            'po_no' => $this->report->po_no,
             'created_by' => $this->report->user->name ?? 'Unknown',
             'created_at' => $this->report->created_at->toISOString(),
-            'type' => 'global_notification',
-            'affects_all_users' => false, // Set to true for system-wide events
-            'affects_roles' => ['admin', 'hod', 'purchasing', 'technical_reviewer','user'], // Roles that should see this
-            'affects_departments' => [$this->report->department], // Departments affected
+            'action' => $this->action, // <-- tells frontend what changed
+            'type' => 'global_approval_notification',
+            'affects_all_users' => false,
+            'affects_roles' => ['admin','hod','purchasing','technical_reviewer','user'],
+            'affects_departments' => [$this->report->department],
         ];
     }
 
