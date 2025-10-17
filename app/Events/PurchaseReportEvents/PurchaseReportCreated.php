@@ -29,13 +29,14 @@ class PurchaseReportCreated implements ShouldBroadcast
         // 2. Broadcast to all admins
         $channels[] = new Channel('purchase-report-admin');
 
-        // 3. Broadcast to HODs in the same department
+        // 3. Broadcast to HODs in the same department (safe slug)
         if ($this->report->department) {
-            $channels[] = new Channel('purchase-report-dept-' . $this->report->department);
+            $channels[] = new Channel('purchase-report-dept-' . $this->report->department_slug);
         }
 
         return $channels;
     }
+
 
     public function broadcastAs(): string
     {

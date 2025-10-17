@@ -13,9 +13,9 @@ class PurchaseReport extends Model
         'user_id',
         'series_no',
         'po_no',
-        'po_status',          // ✅ added
-        'po_created_date',    // ✅ added
-        'po_approved_date',   // ✅ added
+        'po_status',
+        'po_created_date',
+        'po_approved_date',
         'purchaser_id',
         'pr_purpose',
         'department',
@@ -48,8 +48,8 @@ class PurchaseReport extends Model
         'date_needed' => 'datetime:Y-m-d',
         'tr_signed_at' => 'datetime',
         'hod_signed_at' => 'datetime',
-        'po_created_date' => 'datetime',   // ✅ added cast
-        'po_approved_date' => 'datetime',  // ✅ added cast
+        'po_created_date' => 'datetime',
+        'po_approved_date' => 'datetime',
     ];
 
     public function user()
@@ -66,19 +66,19 @@ class PurchaseReport extends Model
     {
         return $this->belongsTo(User::class, 'hod_user_id');
     }
+
     public function purchaserUser()
     {
         return $this->belongsTo(User::class, 'purchaser_id');
     }
 
-     protected static function booted()
+    protected static function booted()
     {
         static::created(function ($model) {
             auditLog('created', $model, null, $model->getAttributes());
         });
 
         static::updated(function ($model) {
-            // Only log if there are actual changes
             $changes = $model->getChanges();
             if (!empty($changes)) {
                 auditLog('updated', $model, $model->getOriginal(), $changes);
@@ -88,5 +88,11 @@ class PurchaseReport extends Model
         static::deleted(function ($model) {
             auditLog('deleted', $model, $model->getOriginal(), null);
         });
+    }
+
+    /** ✅ Safe department slug accessor for broadcasting */
+    public function getDepartmentSlugAttribute(): string
+    {
+        return preg_replace('/[^A-Za-z0-9_.-]/', '_', $this->department ?? '');
     }
 }

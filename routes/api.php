@@ -21,6 +21,8 @@ Route::middleware('auth:sanctum')->group(function () {
     // 👇 custom routes must be declared before apiResource
     Route::get('purchase-reports/summary', [PurchaseReportController::class, 'summaryCounts']);
     Route::get('purchase-reports-table', [PurchaseReportController::class, 'table']);
+    Route::get('/purchase-reports/table-reports', [PurchaseReportController::class, 'tableReports']);
+
     Route::patch('purchase-reports/{id}/update-item-status-only', [PurchaseReportController::class, 'updateItemStatusOnly']);
     Route::patch('purchase-reports/{id}/po-no', [PurchaseReportController::class, 'updatePoNo']);
     Route::patch('purchase-reports/{id}/cancel-po-no', [PurchaseReportController::class, 'cancelPoNo']);
@@ -48,7 +50,7 @@ Route::middleware('auth:sanctum')->group(function () {
     // 🆕 User custom routes (must be before apiResource)
     Route::post('users/{id}/signature', [UserController::class, 'updateSignature']);
     Route::put('users/{id}/password', [UserController::class, 'updatePassword']); // 🆕 Admin password update
-    
+
     // User resource routes
     Route::apiResource('users', UserController::class);
 });

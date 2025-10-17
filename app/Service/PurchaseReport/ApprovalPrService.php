@@ -4,6 +4,7 @@ namespace App\Service\PurchaseReport;
 
 use App\Models\PurchaseReport;
 use App\Events\Global\GlobalPurchaseReportApprovalUpdated;
+
 class ApprovalPrService
 {
     protected PurchaseReportNotificationService $notify;
@@ -94,19 +95,22 @@ class ApprovalPrService
         };
     }
 
-    public function updatePoNo($id, $poNo)
+    public function updatePoNo($id, $poNo, $purchaserId)
     {
         $report = PurchaseReport::findOrFail($id);
+
         $report->po_no = $poNo;
         $report->pr_status = 'Closed';
         $report->po_status = 'For_approval';
         $report->po_created_date = now();
+        $report->purchaser_id = $purchaserId; // ✅ set purchaser_id
+
         $report->save();
 
-        // ✅ Just call the notification service
+        // ✅ Notify and fire events
         $this->notify->notifyPoCreated($report);
-        
         event(new GlobalPurchaseReportApprovalUpdated($report, 'po_created'));
+
         return $report;
     }
 
@@ -125,16 +129,18 @@ class ApprovalPrService
         return $report;
     }
 
-    public function poApproveDate($id)
+    public function poApproveDate($id, $status, $approvedDate, $purchaserId)
     {
         $report = PurchaseReport::findOrFail($id);
-        $report->po_status = 'Approved';
-        $report->po_approved_date = now();
+
+        $report->po_status = $status;
+        $report->po_approved_date = $approvedDate;
+        $report->purchaser_id = $purchaserId;
         $report->save();
 
-        // ✅ Just call the notification service
         $this->notify->notifyPoApproved($report);
         event(new GlobalPurchaseReportApprovalUpdated($report, 'po_approved'));
+
         return $report;
     }
 }
