@@ -8,190 +8,290 @@ use App\Models\PurchaseReport;
 use App\Models\User;
 use App\Notifications\NewMessageNotification;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\Log;
 
 class PurchaseReportNotificationService
 {
-    /** 🔹 When a report is newly created */
-    public function notifyOnCreated(PurchaseReport $report): void
-    {
-        // Fire events only ONCE
-        event(new PurchaseReportCreated($report));
-        event(new GlobalPurchaseReportCreated($report));
-
-        // ✅ Notify HODs in same department
-        $this->notifyDepartmentRole($report, 'hod', 'New Purchase Report Created');
-
-        // ✅ Notify Admins in same department
-        $this->notifyDepartmentRole($report, 'admin', 'New Purchase Report Created', ['admin']);
-
-        // ✅ Notify Users in same department
-        $this->notifyDepartmentRole($report, 'user', 'New Purchase Report Created', ['user']);
-    }
-
-    /** 🔹 When a PO is created */
-    public function notifyPoCreated(PurchaseReport $report): void
-    {
-        // Notify Admins + Purchasing + HOD
-        $this->notifyAdminPurchasingHod($report, 'New PO Created');
-
-        // ✅ Notify Users in same department
-        $this->notifyDepartmentRole($report, 'user', 'New PO Created', ['user']);
-    }
-
-    /** 🔹 When a PO is approved */
-    public function notifyPoApproved(PurchaseReport $report): void
-    {
-        // Notify Admins + Purchasing + HOD
-        $this->notifyAdminPurchasingHod($report, 'PO Approved');
-
-        // ✅ Notify Users in same department
-        $this->notifyDepartmentRole($report, 'user', 'PO Approved', ['user']);
-    }
-
-    /** 🔹 When item status triggers on_hold_tr (technical hold) */
-    public function notifyTechnicalOnHold(PurchaseReport $report): void
-    {
-        // Technical Reviewer (any department)
-        $this->notifyByRole(
-            $report,
-            'technical_reviewer',
-            'Purchase Report For TR Approval (Technical Review)'
-        );
-
-        // Admins in same department
-        $this->notifyDepartmentRole(
-            $report,
-            'admin',
-            'Purchase Report For TR Approval (Admin Copy)',
-            ['admin']
-        );
-
-        // ✅ Users in same department
-        $this->notifyDepartmentRole(
-            $report,
-            'user',
-            'Purchase Report For TR Approval (User Copy)',
-            ['user']
-        );
-    }
-
-    /** 🔹 When PR is on hold for technical review */
-    public function notifyTechnicalReviewOnHold(PurchaseReport $report): void
-    {
-        $this->notifyByRole(
-            $report,
-            'technical_reviewer',
-            'Purchase Report On Hold (Technical Review)'
-        );
-
-        // ✅ Notify Users in same department
-        $this->notifyDepartmentRole(
-            $report,
-            'user',
-            'Purchase Report On Hold (Technical Review)',
-            ['user']
-        );
-    }
+    /** -----------------------------
+     *  NEW HELPERS (CENTRALIZED)
+     * ---------------------------- */
 
     /**
-     * 🔹 Notify users of a specific role but restricted to the report’s department
+     * Get users by roles, optionally restricted to department.
      */
-    protected function notifyDepartmentRole(
-        PurchaseReport $report,
-        string $role,
-        string $title,
-        ?array $overrideRole = null
-    ): void {
-        $users = User::query()
-            ->whereJsonContains('role', $role)
-            ->whereJsonContains('department', $report->department)
-            ->get();
+    protected function getUsersByRoles(array $roles, ?string $department = null): Collection
+    {
+        $query = User::query();
 
-        $this->notifyUnique($users, $report, $title, $overrideRole);
-    }
+        $query->where(function ($q) use ($roles) {
+            foreach ($roles as $role) {
+                $q->orWhereJsonContains('role', $role);
+            }
+        });
 
-    /**
-     * 🔹 Notify users by role
-     * Automatically filters by department for HODs/Admins
-     */
-    protected function notifyByRole(
-        PurchaseReport $report,
-        string $role,
-        string $title,
-        ?array $overrideRole = null
-    ): void {
-        $query = User::query()->whereJsonContains('role', $role);
-
-        // ✅ Restrict admins and hods to same department
-        if (in_array($role, ['admin', 'hod'])) {
-            $query->whereJsonContains('department', $report->department);
+        // Only restrict dept for NON-admin roles
+        if ($department && !in_array('admin', $roles)) {
+            $query->whereJsonContains('department', $department);
         }
 
-        $users = $query->get();
-        $this->notifyUnique($users, $report, $title, $overrideRole);
+        return $query->get();
     }
 
     /**
-     * 🔹 Notify admins + purchasing + HOD of this report
+     * Centralized notification sender (with duplicate prevention)
      */
-    protected function notifyAdminPurchasingHod(PurchaseReport $report, string $title): void
-    {
-        $recipients = User::query()
-            ->where(function ($q) use ($report) {
-                $q->whereJsonContains('role', 'purchasing')
-                  ->orWhere(function ($q2) use ($report) {
-                      $q2->whereJsonContains('role', 'admin')
-                         ->whereJsonContains('department', $report->department);
-                  });
-            })
-            ->get();
-
-        // Add the HOD of the same department if available
-        if ($report->hodUser) {
-            $recipients->push($report->hodUser);
-        }
-
-        $this->notifyUnique($recipients, $report, $title);
-    }
-
-    /**
-     * 🔹 Send notifications only if not already sent to the user for this report/title
-     */
-    protected function notifyUnique(
+    protected function notifyMany(
         Collection $users,
         PurchaseReport $report,
         string $title,
         ?array $overrideRole = null
     ): void {
-        $users->unique('id')->each(function (User $user) use ($report, $title, $overrideRole) {
-            if (! $user->notifications()
-                ->where('data->report_id', $report->id)
-                ->where('data->title', $title)
-                ->exists()) {
-                $this->notify($user, $report, $title, $overrideRole);
-            }
-        });
+        $users
+            ->unique('id')
+            ->each(function (User $user) use ($report, $title, $overrideRole) {
+
+                // Prevent duplicate notifications
+                $exists = $user->notifications()
+                    ->where('data->report_id', $report->id)
+                    ->where('data->title', $title)
+                    ->exists();
+
+                if ($exists) return;
+
+                $user->notify(new NewMessageNotification([
+                    'title'      => $title,
+                    'report_id'  => $report->id,
+                    'series_no'  => $report->series_no ?? null,
+                    'po_no'      => $report->po_no ?? null,
+                    'created_by' => $report->user->name ?? 'Unknown',
+                    'pr_status'  => $report->pr_status,
+                    'po_status'  => $report->po_status,
+                    'user_id'    => $user->id,
+                    'department' => $user->department,
+                    'role'       => $overrideRole ?? $user->role,
+                ]));
+            });
     }
 
-    /**
-     * 🔹 Send the actual notification
-     */
-    private function notify(
-        User $user,
-        PurchaseReport $report,
-        string $title,
-        ?array $overrideRole = null
-    ): void {
-        $user->notify(new NewMessageNotification([
-            'title'      => $title,
-            'report_id'  => $report->id,
-            'po_no'      => $report->po_no ?? null,
-            'created_by' => $report->user->name ?? 'Unknown',
-            'pr_status'  => $report->pr_status,
-            'po_status'  => $report->po_status,
-            'user_id'    => $user->id,
-            'department' => $user->department,
-            'role'       => $overrideRole ?? $user->role,
-        ]));
+    /** -----------------------------
+     *  CREATION EVENTS
+     * ---------------------------- */
+
+    public function notifyOnCreated(PurchaseReport $report): void
+    {
+        // Admin + Purchasing get all reports
+        $admins      = $this->getUsersByRoles(['admin']);
+        $purchasing  = $this->getUsersByRoles(['purchasing']);
+        $hodTrUsers  = $this->getUsersByRoles(['hod', 'technical_reviewer'], $report->department);
+
+        $recipients = $admins->merge($purchasing)->merge($hodTrUsers);
+
+        $this->notifyMany($recipients, $report, 'New Purchase Request Created');
+
+        // Broadcast for real-time updates
+        $this->broadcastCreationEvents($report);
+    }
+
+    protected function broadcastCreationEvents(PurchaseReport $report): void
+    {
+        event(new PurchaseReportCreated($report));
+        event(new GlobalPurchaseReportCreated($report));
+
+        Log::info("📢 Events dispatched for report {$report->id}");
+    }
+
+    /** -----------------------------
+     *  PURCHASE APPROVAL
+     * ---------------------------- */
+
+    public function notifyPurchasingForApproval(PurchaseReport $report): void
+    {
+        // Notify Admins (global)
+        $this->notifyMany(
+            $this->getUsersByRoles(['admin']),
+            $report,
+            'Purchase Request Ready for Approval',
+            ['admin']
+        );
+
+        // Notify Purchasing (global)
+        $this->notifyMany(
+            $this->getUsersByRoles(['purchasing']),
+            $report,
+            'Purchase Request Ready for Approval',
+            ['purchasing']
+        );
+
+        // Notify HOD (department-specific)
+        $this->notifyMany(
+            $this->getUsersByRoles(['hod'], $report->department),
+            $report,
+            'Purchase Request Ready for Approval',
+            ['hod']
+        );
+
+        // Notify Technical Reviewer (department-specific)
+        $this->notifyMany(
+            $this->getUsersByRoles(['technical_reviewer'], $report->department),
+            $report,
+            'Purchase Request Ready for Approval',
+            ['technical_reviewer']
+        );
+
+        // Notify User (department-specific)
+        $this->notifyMany(
+            $this->getUsersByRoles(['user'], $report->department),
+            $report,
+            'Purchase Request Ready for Approval',
+            ['user']
+        );
+    }
+
+    /** -----------------------------
+     *  PO CREATED/RETURNED/APPROVED
+     * ---------------------------- */
+
+    public function notifyPoCreated(PurchaseReport $report): void
+    {
+        $this->notifyAdminPurchasingHod($report, 'New PO Created');
+
+        $this->notifyMany(
+            $this->getUsersByRoles(['user'], $report->department),
+            $report,
+            'New PO Created'
+        );
+    }
+
+    public function notifyPoReturned(PurchaseReport $report): void
+    {
+        $this->notifyAdminPurchasingHod($report, 'PO Returned');
+
+        $this->notifyMany(
+            $this->getUsersByRoles(['user'], $report->department),
+            $report,
+            'PO Returned'
+        );
+    }
+
+    public function notifyPoApproved(PurchaseReport $report): void
+    {
+        $this->notifyAdminPurchasingHod($report, 'PO Approved');
+
+        $this->notifyMany(
+            $this->getUsersByRoles(['user'], $report->department),
+            $report,
+            'PO Approved'
+        );
+
+        $this->notifyMany(
+            $this->getUsersByRoles(['technical_reviewer'], $report->department),
+            $report,
+            'PO Approved'
+        );
+    }
+
+    /** -----------------------------
+     *  TECHNICAL REVIEW
+     * ---------------------------- */
+
+    public function notifyTechnicalOnHold(PurchaseReport $report): void
+    {
+        $this->notifyMany(
+            $this->getUsersByRoles(['technical_reviewer'], $report->department),
+            $report,
+            'Purchase Request For TR Approval (Technical Review)'
+        );
+
+        $this->notifyMany(
+            $this->getUsersByRoles(['admin']),
+            $report,
+            'Purchase Request For TR Approval (Admin Copy)'
+        );
+
+        $this->notifyMany(
+            $this->getUsersByRoles(['user'], $report->department),
+            $report,
+            'Purchase Request For TR Approval (User Copy)'
+        );
+    }
+
+    public function notifyTechnicalReviewOnHold(PurchaseReport $report): void
+    {
+        $this->notifyMany(
+            $this->getUsersByRoles(['technical_reviewer'], $report->department),
+            $report,
+            'Purchase Request On Hold (Technical Review)'
+        );
+
+        $this->notifyMany(
+            $this->getUsersByRoles(['user'], $report->department),
+            $report,
+            'Purchase Request On Hold (Technical Review)'
+        );
+    }
+
+    /** -----------------------------
+     *  REJECTED
+     * ---------------------------- */
+
+    public function notifyRejected(PurchaseReport $report): void
+    {
+        $title = 'Purchase Request Rejected';
+
+        $this->notifyAdminPurchasingHod($report, $title);
+
+        if ($report->user) {
+            $this->notifyMany(collect([$report->user]), $report, $title);
+        }
+
+        $this->notifyMany(
+            $this->getUsersByRoles(['technical_reviewer'], $report->department),
+            $report,
+            $title
+        );
+    }
+
+    /** -----------------------------
+     *  DELIVERY STATUS CHANGED
+     * ---------------------------- */
+
+    public function notifyDeliveryStatusUpdated(PurchaseReport $report): void
+    {
+        $title = match ($report->delivery_status) {
+            'delivered' => 'Purchase Order Delivered',
+            'partial'   => 'Purchase Order Partially Delivered',
+            'pending'   => 'Delivery Status Changed to Pending',
+            default     => 'Delivery Status Updated',
+        };
+
+        $admin      = $this->getUsersByRoles(['admin']);
+        $purchasing = $this->getUsersByRoles(['purchasing']);
+        $hod        = $this->getUsersByRoles(['hod'], $report->department);
+
+        $this->notifyMany($admin->merge($purchasing)->merge($hod), $report, $title);
+
+        $this->notifyMany(
+            $this->getUsersByRoles(['user'], $report->department),
+            $report,
+            $title
+        );
+    }
+
+    /** -----------------------------
+     *  HELPER – ADMINS + PURCHASING + HOD
+     * ---------------------------- */
+
+    protected function notifyAdminPurchasingHod(PurchaseReport $report, string $title): void
+    {
+        $recipients = collect()
+            ->merge($this->getUsersByRoles(['admin']))
+            ->merge($this->getUsersByRoles(['purchasing']))
+            ->merge($this->getUsersByRoles(['hod'], $report->department));
+
+        if ($report->hodUser) {
+            $recipients->push($report->hodUser);
+        }
+
+        $this->notifyMany($recipients, $report, $title);
     }
 }

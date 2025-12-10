@@ -17,11 +17,47 @@ class TagsController extends Controller
     }
 
     /**
-     * Display a listing of tags.
+     * Display a listing of tags with optional filters.
+     *
+     * Query parameters:
+     * - department_id: int|string (comma-separated for multiple)
+     * - description: string (search term)
+     * - sort_by: string
+     * - sort_order: asc|desc
+     * - limit: int
      */
-    public function index()
+    public function index(Request $request)
     {
-        return response()->json($this->tagService->getAll());
+        $filters = [];
+
+        // Parse department_id (single or comma-separated)
+        if ($request->has('department_id')) {
+            $deptIds = $request->input('department_id');
+            $filters['department_id'] = str_contains($deptIds, ',')
+                ? array_map('intval', explode(',', $deptIds))
+                : (int) $deptIds;
+        }
+
+        // Search by description
+        if ($request->has('description')) {
+            $filters['description'] = $request->input('description');
+        }
+
+        // Sorting
+        if ($request->has('sort_by')) {
+            $filters['sort_by'] = $request->input('sort_by');
+        }
+
+        if ($request->has('sort_order')) {
+            $filters['sort_order'] = $request->input('sort_order');
+        }
+
+        // Limit
+        if ($request->has('limit')) {
+            $filters['limit'] = (int) $request->input('limit');
+        }
+
+        return response()->json($this->tagService->getAll($filters));
     }
 
     /**
@@ -30,7 +66,7 @@ class TagsController extends Controller
     public function store(Request $request)
     {
         $data = $request->validate([
-            'department_id' => 'required|exists:department,id', // ✅ Check if department exists
+            'department_id' => 'required|exists:department,id',
             'description'   => 'nullable|string|max:255',
         ]);
 

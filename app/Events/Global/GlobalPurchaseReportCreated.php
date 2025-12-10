@@ -14,33 +14,34 @@ class GlobalPurchaseReportCreated implements ShouldBroadcast
 
     public $report;
 
-    /**
-     * Create a new event instance.
-     */
     public function __construct($report)
     {
         $this->report = $report;
     }
 
-    /**
-     * Get the channels the event should broadcast on.
-     */
-    public function broadcastOn(): Channel
+    public function broadcastOn(): array
     {
-        return new Channel('purchase-report-global'); // Public channel for all users
+        $channels = [];
+
+        // Department isolated
+        if ($this->report->department_slug) {
+            $channels[] = new Channel('purchase-report-dept-' . $this->report->department_slug);
+        }
+        $channels[] = new Channel('purchase-report-user-' . $this->report->user_id);
+
+        // Admin, Purchasing, HOD channels (if you want those roles to get all)
+        $channels[] = new Channel('purchase-report-admin');
+        $channels[] = new Channel('purchase-report-purchasing');
+        $channels[] = new Channel('purchase-report-hod-' . $this->report->department_slug);
+
+        return $channels;
     }
 
-    /**
-     * The event's broadcast name.
-     */
     public function broadcastAs(): string
     {
         return 'GlobalPurchaseReportCreated';
     }
 
-    /**
-     * Get the data to broadcast.
-     */
     public function broadcastWith(): array
     {
         return [
@@ -53,15 +54,12 @@ class GlobalPurchaseReportCreated implements ShouldBroadcast
             'created_by' => $this->report->user->name ?? 'Unknown',
             'created_at' => $this->report->created_at->toISOString(),
             'type' => 'global_notification',
-            'affects_all_users' => false, // Set to true for system-wide events
-            'affects_roles' => ['admin', 'hod', 'purchasing', 'technical_reviewer','user'], // Roles that should see this
-            'affects_departments' => [$this->report->department], // Departments affected
+            'affects_all_users' => false,
+            'affects_roles' => ['admin', 'hod', 'purchasing', 'technical_reviewer', 'user'],
+            'affects_departments' => [$this->report->department],
         ];
     }
 
-    /**
-     * Use Reverb connection
-     */
     public function broadcastConnection()
     {
         return 'reverb';

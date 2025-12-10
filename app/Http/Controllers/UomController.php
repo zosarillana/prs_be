@@ -17,29 +17,29 @@ class UomController extends Controller
     }
 
     public function index(Request $request, PaginatorService $paginator)
-{
-    // Start a query on the UOM model (from your service)
-    $query = $this->uomService->query();   // <-- add query() in service
+    {
+        // Start a query on the UOM model (from your service)
+        $query = $this->uomService->query();   // <-- add query() in service
 
-    // 🔎 Optional search
-    if ($search = $request->input('searchTerm')) {
-        $query->where('description', 'like', "%{$search}%");
+        // 🔎 Optional search
+        $search = $request->input('searchTerm');
+        if ($search) {
+            $query->where('description', 'like', "%{$search}%");
+        }
+
+        // ✅ Sorting
+        $sortBy    = $request->input('sortBy', 'description');  // Changed default from 'id' to 'description'
+        $sortOrder = $request->input('sortOrder', 'asc');       // Changed default from 'desc' to 'asc'
+        $query->orderBy($sortBy, $sortOrder);
+
+        // ✅ Pagination
+        $pageNumber = $request->input('pageNumber', 1);
+        $pageSize   = $request->input('pageSize', 10);
+
+        $result = $paginator->paginate($query, $pageNumber, $pageSize);
+
+        return response()->json($result);
     }
-
-    // ✅ Sorting
-    $sortBy    = $request->input('sortBy', 'id');
-    $sortOrder = $request->input('sortOrder', 'desc');
-    $query->orderBy($sortBy, $sortOrder);
-
-    // ✅ Pagination
-    $result = $paginator->paginate(
-        $query,
-        $request->input('pageNumber', 1),
-        $request->input('pageSize', 10)
-    );
-
-    return response()->json($result);
-}
 
     public function store(Request $request)
     {
