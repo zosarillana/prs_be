@@ -4,10 +4,41 @@ namespace App\Service\Notification;
 
 use Illuminate\Notifications\DatabaseNotification;
 use App\Models\User;
+use App\Notifications\NewMessageNotification;
 use Illuminate\Support\Facades\DB;
 
 class NotificationService
 {
+    /**
+     * Send notification to selected roles or departments
+     */
+    public function sendNotification(array $data)
+    {
+        $roles = $data['roles'] ?? [];
+        $departments = $data['departments'] ?? [];
+
+        // Query users who match any allowed role OR department
+        $users = User::query()
+            ->when(!empty($roles), function ($q) use ($roles) {
+                foreach ($roles as $role) {
+                    $q->orWhereJsonContains('role', $role);
+                }
+            })
+            ->when(!empty($departments), function ($q) use ($departments) {
+                foreach ($departments as $dept) {
+                    $q->orWhereJsonContains('department', $dept);
+                }
+            })
+            ->get();
+
+        // Send the notification to each matching user
+        foreach ($users as $user) {
+            $user->notify(new NewMessageNotification($data));
+        }
+
+        return $users->count(); // return how many users were notified
+    }
+
     /**
      * Get all notifications for a user
      */
@@ -46,7 +77,7 @@ class NotificationService
     }
 
     /**
-     * Get counts for Admin (only notifications tagged as admin)
+     * Get counts for Admin
      */
     public function getCountsForAdmins()
     {
@@ -65,7 +96,7 @@ class NotificationService
     }
 
     /**
-     * Get all notifications for a specific department (HOD)
+     * Get notifications for a department
      */
     public function getAllForDepartment(string|array $departments)
     {
@@ -83,7 +114,7 @@ class NotificationService
     }
 
     /**
-     * Get counts for a department (HOD)
+     * Counts for department
      */
     public function getCountsForDepartment(string|array $departments)
     {
@@ -109,7 +140,7 @@ class NotificationService
     }
 
     /**
-     * Get summary counts filtered by role, department, or status
+     * Summary filters
      */
     public function getSummary(
         ?string $role = null,

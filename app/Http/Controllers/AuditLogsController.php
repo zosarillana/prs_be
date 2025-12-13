@@ -16,17 +16,35 @@ class AuditLogsController extends Controller
         // Build query with optional filters and search
         $query = AuditLog::query()->with('user:id,name,email');
 
-        // 🔎 Search across action / model_type
+        // 🔎 Search across action / model_type / user name / user email
         if ($search = $request->input('searchTerm')) {
             $query->where(function ($q) use ($search) {
                 $q->where('action', 'like', "%{$search}%")
-                  ->orWhere('model_type', 'like', "%{$search}%");
+                  ->orWhere('model_type', 'like', "%{$search}%")
+                  ->orWhereHas('user', function ($userQuery) use ($search) {
+                      $userQuery->where('name', 'like', "%{$search}%")
+                                ->orWhere('email', 'like', "%{$search}%");
+                  });
             });
         }
 
         // Filter by user_id if provided
         if ($request->filled('user_id')) {
             $query->where('user_id', $request->user_id);
+        }
+
+        // Filter by user email if provided
+        if ($request->filled('email')) {
+            $query->whereHas('user', function ($userQuery) use ($request) {
+                $userQuery->where('email', 'like', "%{$request->email}%");
+            });
+        }
+
+        // Filter by user name if provided
+        if ($request->filled('username')) {
+            $query->whereHas('user', function ($userQuery) use ($request) {
+                $userQuery->where('name', 'like', "%{$request->username}%");
+            });
         }
 
         // Filter by model_type if provided

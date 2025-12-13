@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\UserLoginHistory;
 use Illuminate\Http\Request;
 use App\Service\Paginator\PaginatorService;
+use Carbon\Carbon;
 
 class UserLogsController extends Controller
 {
@@ -40,16 +41,23 @@ class UserLogsController extends Controller
             $request->input('pageSize', 10)
         );
 
-        // Optional transformation (flat table data)
+        // ✅ Convert timestamps to Philippine time + map data
         $result['items'] = collect($result['items'])->map(function ($log) {
             return [
-                'id'           => $log->id,
-                'user_name'    => $log->user?->name,
-                'user_email'   => $log->user?->email,
-                'ip_address'   => $log->ip_address,
-                'user_agent'   => $log->user_agent,
-                'logged_in_at' => $log->logged_in_at,
-                'logged_out_at'=> $log->logged_out_at,
+                'id'             => $log->id,
+                'user_name'      => $log->user?->name,
+                'user_email'     => $log->user?->email,
+                'ip_address'     => $log->ip_address,
+                'user_agent'     => $log->user_agent,
+                'logged_in_at'   => $log->logged_in_at
+                    ? Carbon::parse($log->logged_in_at)->timezone('Asia/Manila')->format('Y-m-d H:i:s')
+                    : null,
+                'logged_out_at'  => $log->logged_out_at
+                    ? Carbon::parse($log->logged_out_at)->timezone('Asia/Manila')->format('Y-m-d H:i:s')
+                    : null,
+                'created_at'     => $log->created_at
+                    ? Carbon::parse($log->created_at)->timezone('Asia/Manila')->format('Y-m-d H:i:s')
+                    : null,
             ];
         })->toArray();
 

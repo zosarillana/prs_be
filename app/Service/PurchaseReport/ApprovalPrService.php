@@ -4,6 +4,8 @@ namespace App\Service\PurchaseReport;
 
 use App\Models\PurchaseReport;
 use App\Events\Global\GlobalPurchaseReportApprovalUpdated;
+use Illuminate\Support\Facades\Cache;
+
 class ApprovalPrService
 {
     protected PurchaseReportNotificationService $notify;
@@ -22,32 +24,43 @@ class ApprovalPrService
         ?int $loggedUserId = null
     ): PurchaseReport {
         $report = PurchaseReport::findOrFail($id);
-
+        $oldStatus = $report->pr_status;
         $itemStatus = $report->item_status ?? [];
         $remarks = $report->remarks ?? [];
 
-        if (! is_array($itemStatus)) {
+        if (!is_array($itemStatus)) {
             $itemStatus = [];
         }
-        if (! is_array($remarks)) {
+        if (!is_array($remarks)) {
             $remarks = [];
         }
 
+        // ✅ Update only the targeted item
         if (array_key_exists($index, $report->item_description)) {
             $itemStatus[$index] = $status;
             $remarks[$index] = $remark;
         }
 
-        // ✅ Determine PR status
-        $hasPending = in_array('pending', $itemStatus, true);
-        $hasPendingTr = in_array('pending_tr', $itemStatus, true);
-
-        if ($hasPending) {
-            $prStatus = 'on_hold';
-        } elseif ($hasPendingTr) {
+        /**
+         * ✅ Determine PR Status
+         * Logic:
+         * - If ANY item is rejected → pr_status = 'rejected'
+         * - Else if any item pending_tr → 'on_hold_tr'
+         * - Else if any item pending → 'on_hold'
+         * - Else → 'for_approval'
+         */
+        if (in_array('rejected', $itemStatus, true)) {
+            $prStatus = 'rejected';
+            $poStatus = null; // ✅ Also set PO status rejected
+        } elseif (in_array('pending_tr', $itemStatus, true)) {
             $prStatus = 'on_hold_tr';
+            $poStatus = $report->po_status ?? null;
+        } elseif (in_array('pending', $itemStatus, true)) {
+            $prStatus = 'on_hold';
+            $poStatus = $report->po_status ?? null;
         } else {
             $prStatus = 'for_approval';
+            $poStatus = $report->po_status ?? null;
         }
 
         // ✅ Prepare update data
@@ -55,6 +68,7 @@ class ApprovalPrService
             'item_status' => $itemStatus,
             'remarks' => $remarks,
             'pr_status' => $prStatus,
+            'po_status' => $poStatus, // ✅ Added
         ];
 
         // ✅ Attach approver info
@@ -71,16 +85,21 @@ class ApprovalPrService
         $report->update($updateData);
         $report->refresh();
 
-        // ✅ Trigger notifications based on new PR status
+        // ✅ Trigger notifications based on PR status
         match ($report->pr_status) {
             'for_approval' => $this->notify->notifyPurchasingForApproval($report),
-            'on_hold_tr' => $this->notify->notifyTechnicalReviewOnHold($report),
-            default => null, // 'on_hold' might not need a notification
+            'on_hold_tr'   => $this->notify->notifyTechnicalReviewOnHold($report),
+            'rejected'     => $this->notify->notifyRejected($report),
+            default        => null,
         };
 
-        event(new GlobalPurchaseReportApprovalUpdated($report, 'item_approved'));
+        // ✅ Clear cache BEFORE notifications
+        $this->clearSummaryCaches();
+        event(new GlobalPurchaseReportApprovalUpdated($report, 'item_approved', $oldStatus)); // ✅ Pass old status
+
         return $report;
     }
+
 
     /**
      * Send notifications based on PR status
@@ -94,19 +113,23 @@ class ApprovalPrService
         };
     }
 
-    public function updatePoNo($id, $poNo)
+    public function updatePoNo($id, $poNo, $purchaserId)
     {
         $report = PurchaseReport::findOrFail($id);
+
         $report->po_no = $poNo;
         $report->pr_status = 'Closed';
         $report->po_status = 'For_approval';
         $report->po_created_date = now();
-        $report->save();
+        $report->purchaser_id = $purchaserId; // ✅ set purchaser_id
 
-        // ✅ Just call the notification service
+        $report->save();
+        // ✅ Clear cache
+        $this->clearSummaryCaches();
+        // ✅ Notify and fire events
         $this->notify->notifyPoCreated($report);
-        
         event(new GlobalPurchaseReportApprovalUpdated($report, 'po_created'));
+
         return $report;
     }
 
@@ -114,27 +137,94 @@ class ApprovalPrService
     public function cancelPoNo($id)
     {
         $report = PurchaseReport::findOrFail($id);
+
         $report->po_no = null;
         $report->pr_status = 'Cancelled';
         $report->po_status = 'Cancelled';
         $report->po_created_date = now();
+
+        // ✅ Update all item statuses to 'cancelled'
+        if (is_array($report->item_status)) {
+            $report->item_status = array_map(fn() => 'cancelled', $report->item_status);
+        }
+
         $report->save();
 
+        // ✅ Clear cache
+        $this->clearSummaryCaches();
         $this->notify->notifyPoCreated($report);
         event(new GlobalPurchaseReportApprovalUpdated($report, 'po_cancelled'));
+
         return $report;
     }
 
-    public function poApproveDate($id)
+    public function returnPoNo($id)
     {
         $report = PurchaseReport::findOrFail($id);
-        $report->po_status = 'Approved';
-        $report->po_approved_date = now();
-        $report->save();
 
-        // ✅ Just call the notification service
+        // ✅ Reset PO-related fields
+        $report->po_no = null;
+        $report->po_created_date = null;
+        $report->po_approved_date = null;
+        $report->po_status = null; // ← keep this null
+        // $report->po_created_date = now();
+
+        // ✅ Mark PR as returned
+        $report->pr_status = 'returned';
+
+        // ✅ Update all item statuses to 'returned'
+        if (is_array($report->item_status)) {
+            $report->item_status = array_map(fn() => 'returned', $report->item_status);
+        }
+
+        // ✅ Clear TR / HOD approvals and signatures
+        $report->tr_user_id = null;
+        $report->hod_user_id = null;
+        $report->tr_signed_at = null;
+        $report->hod_signed_at = null;
+
+        // // ✅ Optionally clear remarks (optional)
+        // if (is_array($report->remarks)) {
+        //     $report->remarks = array_fill(0, count($report->remarks), '');
+        // }
+
+        // ✅ Optionally set delivery_status to returned (if your workflow uses it)
+        // $report->delivery_status = 'returned';
+
+        $report->save();
+        // ✅ Clear cache
+        $this->clearSummaryCaches();
+        // ✅ Notify and broadcast
+        $this->notify->notifyPoReturned($report);
+        event(new GlobalPurchaseReportApprovalUpdated($report, 'po_returned'));
+
+        return $report;
+    }
+
+
+    public function poApproveDate($id, $status, $approvedDate, $purchaserId)
+    {
+        $report = PurchaseReport::findOrFail($id);
+
+        $report->po_status = $status;
+        $report->po_approved_date = $approvedDate;
+        $report->purchaser_id = $purchaserId;
+        $report->save();
+        // ✅ Clear cache
+        $this->clearSummaryCaches();
         $this->notify->notifyPoApproved($report);
         event(new GlobalPurchaseReportApprovalUpdated($report, 'po_approved'));
+
         return $report;
+    }
+
+    protected function clearSummaryCaches(): void
+    {
+        // Clear all summary caches (since multiple users might be affected)
+        Cache::flush(); // Or use a more targeted approach if needed
+
+        // Or if you want to be more specific:
+        // $pattern = 'summary_counts_*';
+        // Cache::tags(['summary'])->flush();
     }
 }

@@ -1,6 +1,7 @@
 <?php
 
 namespace App\Http\Requests\PurchaseReport;
+
 use App\Models\User;
 use Illuminate\Foundation\Http\FormRequest;
 
@@ -25,15 +26,14 @@ class StorePurchaseReportRequest extends FormRequest
             'quantity.*' => 'required|numeric|min:1',     // or min:0 if 0 is allowed
             'unit.*' => 'required|string|max:50',
             'item_description.*' => 'required|string|max:255',
-            
+
             'tag' => 'nullable|array',
             'item_status' => 'nullable|array',
             'pr_status' => 'nullable|string|max:100',
             'remarks' => 'nullable|array',
+
+            // 👇 Add this line
+            'is_draft' => 'sometimes|boolean',
         ];
-
-
     }
-
-
 }

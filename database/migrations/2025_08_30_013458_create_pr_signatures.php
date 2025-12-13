@@ -19,8 +19,8 @@ return new class extends Migration
             $table->foreignId('user_id')
                   ->constrained('users')
                   ->onDelete('cascade');
-            $table->string('role')->nullable();  
-            $table->timestamp('signed_at')->nullable(); 
+            $table->string('role')->nullable();
+            $table->timestamp('signed_at')->nullable();
             $table->boolean('is_approved')->default(false);
             $table->timestamp('date_created')->useCurrent();
             $table->timestamp('date_updated')->useCurrent()->useCurrentOnUpdate();

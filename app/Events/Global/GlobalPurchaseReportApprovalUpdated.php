@@ -14,36 +14,38 @@ class GlobalPurchaseReportApprovalUpdated implements ShouldBroadcast
     use Dispatchable, InteractsWithSockets, SerializesModels;
 
     public $report;
-    public $action; // e.g. item_approved, po_created, po_cancelled, po_approved
+    public $action;
+    public $oldStatus;
 
-    /**
-     * Create a new event instance.
-     */
-    public function __construct(PurchaseReport $report, string $action = 'approval_updated')
+    public function __construct(PurchaseReport $report, string $action, ?string $oldStatus = null)
     {
         $this->report = $report;
         $this->action = $action;
+        $this->oldStatus = $oldStatus;
     }
 
-    /**
-     * Get the channels the event should broadcast on.
-     */
-    public function broadcastOn(): Channel
+    public function broadcastOn(): array
     {
-        return new Channel('purchase-report-approval-global');
+        $channels = [];
+        if ($this->report->department_slug) {
+            $channels[] = new Channel('purchase-report-dept-' . $this->report->department_slug);
+        }
+        $channels[] = new Channel('purchase-report-user-' . $this->report->user_id);
+        $channels[] = new Channel('purchase-report-admin');
+        $channels[] = new Channel('purchase-report-purchasing');
+        $channels[] = new Channel('purchase-report-hod-' . $this->report->department_slug);
+
+        // Optional: if you do want a global approval channel for admin only
+        // $channels[] = new Channel('purchase-report-approval-global');
+
+        return $channels;
     }
 
-    /**
-     * Broadcast event name
-     */
     public function broadcastAs(): string
     {
         return 'GlobalPurchaseReportApprovalUpdated';
     }
 
-    /**
-     * Data to broadcast
-     */
     public function broadcastWith(): array
     {
         return [
@@ -52,21 +54,19 @@ class GlobalPurchaseReportApprovalUpdated implements ShouldBroadcast
             'user_id' => $this->report->user_id,
             'department' => $this->report->department ?? null,
             'pr_status' => $this->report->pr_status,
+            'old_pr_status' => $this->oldStatus,
             'po_status' => $this->report->po_status,
             'po_no' => $this->report->po_no,
             'created_by' => $this->report->user->name ?? 'Unknown',
             'created_at' => $this->report->created_at->toISOString(),
-            'action' => $this->action, // <-- tells frontend what changed
+            'action' => $this->action,
             'type' => 'global_approval_notification',
             'affects_all_users' => false,
-            'affects_roles' => ['admin','hod','purchasing','technical_reviewer','user'],
             'affects_departments' => [$this->report->department],
+            'affects_roles' => ['admin', 'purchasing', 'hod', 'technical_reviewer', 'user'],
         ];
     }
 
-    /**
-     * Use Reverb connection
-     */
     public function broadcastConnection()
     {
         return 'reverb';
