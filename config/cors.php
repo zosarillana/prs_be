@@ -13,18 +13,25 @@ return [
     |
     */
 
-    'paths' => ['*'],
+    // 'paths' => ['*'],
+    'paths' => [
+        'api/*',
+        'sanctum/csrf-cookie',
+        'login',
+        'logout',
+    ],
 
     'allowed_methods' => ['*'],
 
     'allowed_origins' => [
-        'http://202.137.126.213:8089',  // ✅ ADD THIS - your public IP
-        'http://192.168.100.52:5173',   // ✅ add your LAN frontend URL
-        'http://192.168.30.11:5173',
-        'http://192.168.30.11:8089',   // ✅ add your LAN frontend URL
-        'http://192.168.8.254:5173',   // ✅ add your LAN frontend URL
-        'http://localhost:5173',
-        'http://127.0.0.1:5173'
+        'http://192.168.8.254:5173'
+        // 'http://202.137.126.213:8089',  // ✅ ADD THIS - your public IP
+        // 'http://192.168.100.52:5173',   // ✅ add your LAN frontend URL
+        // 'http://192.168.30.11:5173',
+        // 'http://192.168.30.11:8089',   // ✅ add your LAN frontend URL
+        // 'http://192.168.8.254:5173',   // ✅ add your LAN frontend URL
+        // 'http://localhost:5173',
+        // 'http://127.0.0.1:5173'
     ],
 
     'allowed_origins_patterns' => [],

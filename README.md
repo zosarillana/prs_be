@@ -18,3 +18,4 @@ npm run dev -- --host
 php artisan serve --host=192.168.30.11 --port=8000
 php artisan reverb:start --host=0.0.0.0 --port=8080
 php artisan queue:work
+php artisan serve --host=192.168.8.254 --port=8000

@@ -1,6 +1,8 @@
 <?php
 
 use App\Http\Controllers\DepartmentController;
+use App\Http\Controllers\ItemEximController;
+use App\Http\Controllers\ItemPriceController;
 use App\Http\Controllers\ModulesController;
 use App\Http\Controllers\TagsController;
 use App\Http\Controllers\UserPriviligesController;
@@ -22,6 +24,8 @@ Route::withoutMiddleware([
     Route::get('user-logs', [UserLogsController::class, 'index']);
     Route::get('audit-logs', [AuditLogsController::class, 'index']);
     // ===================================
+    Route::post('/import-items', [ItemEximController::class, 'import']);
+    Route::get('item-prices/table', [ItemPriceController::class, 'table']);
 
     Route::get('purchase-reports/summary', [PurchaseReportController::class, 'summaryCounts']);
     Route::get('purchase-reports-table', [PurchaseReportController::class, 'table']);

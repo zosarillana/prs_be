@@ -3,7 +3,8 @@
 namespace App\Helpers;
 
 use Illuminate\Http\Request;
-use App\Service\PurchaseReport\PurchaseReportService;
+// use App\Service\PurchaseReport\PurchaseReportService;
+use App\Contracts\TableQueryService;
 use App\Service\Paginator\PaginatorService;
 
 class QueryHelper
@@ -13,7 +14,7 @@ class QueryHelper
      */
     public static function buildAndPaginate(
         Request $request,
-        PurchaseReportService $service,
+        TableQueryService $service,
         PaginatorService $paginator,
         array $defaults = []
     ): array {

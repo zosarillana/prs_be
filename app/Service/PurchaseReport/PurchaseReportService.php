@@ -10,8 +10,9 @@ use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use App\Contracts\TableQueryService;
 
-class PurchaseReportService
+class PurchaseReportService implements TableQueryService
 {
     /**
      * Build the query for PurchaseReports with optional filters.
