@@ -1,11 +1,13 @@
 <?php
 
 use App\Http\Controllers\DepartmentController;
+use App\Http\Controllers\ItemController;
 use App\Http\Controllers\ItemEximController;
 use App\Http\Controllers\ItemPriceController;
 use App\Http\Controllers\ModulesController;
 use App\Http\Controllers\TagsController;
 use App\Http\Controllers\UserPriviligesController;
+use App\Http\Controllers\VendorController;
 use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\UserLogsController;
 use App\Http\Controllers\AuditLogsController;
@@ -47,6 +49,15 @@ Route::withoutMiddleware([
         Route::delete('progresses/{id}', [PurchaseReportProgressController::class, 'destroy']);
     });
 
+    Route::prefix('item-prices')->group(function () {
+        Route::get('/', [ItemPriceController::class, 'table']);   // Read (list)
+        Route::post('/', [ItemPriceController::class, 'store']);  // Create
+        Route::get('{id}', [ItemPriceController::class, 'show']); // Read (single)
+        Route::put('{id}', [ItemPriceController::class, 'update']); // Update
+        Route::delete('{id}', [ItemPriceController::class, 'destroy']); // Delete
+    });
+
+
     Route::apiResource('modules', ModulesController::class);
     Route::apiResource('user-privileges', UserPriviligesController::class);
     Route::apiResource('departments', DepartmentController::class);
@@ -67,5 +78,8 @@ Route::withoutMiddleware([
     Route::post('users/{id}/signature', [UserController::class, 'updateSignature']);
     Route::put('users/{id}/password', [UserController::class, 'updatePassword']);
 
+    
+    Route::apiResource('items', ItemController::class);
+    Route::apiResource('vendors', VendorController::class);
     Route::apiResource('users', UserController::class);
 });

@@ -26,6 +26,10 @@ class MapItemPrice
             'created_at' => $price->created_at
                 ? $price->created_at->format('Y-m-d')
                 : null,
+
+            'updated_at' => $price->updated_at
+                ? $price->updated_at->format('Y-m-d')
+                : null,
         ];
     }
 }
