@@ -1,21 +1,21 @@
 <?php
 
+use App\Http\Controllers\AuditLogsController;
 use App\Http\Controllers\DepartmentController;
 use App\Http\Controllers\ItemController;
 use App\Http\Controllers\ItemEximController;
 use App\Http\Controllers\ItemPriceController;
 use App\Http\Controllers\ModulesController;
-use App\Http\Controllers\TagsController;
-use App\Http\Controllers\UserPriviligesController;
-use App\Http\Controllers\VendorController;
-use Illuminate\Support\Facades\Route;
-use App\Http\Controllers\UserLogsController;
-use App\Http\Controllers\AuditLogsController;
 use App\Http\Controllers\NotificationController;
 use App\Http\Controllers\PurchaseReportController;
 use App\Http\Controllers\PurchaseReportProgressController;
+use App\Http\Controllers\TagsController;
 use App\Http\Controllers\UomController;
 use App\Http\Controllers\UserController;
+use App\Http\Controllers\UserLogsController;
+use App\Http\Controllers\UserPriviligesController;
+use App\Http\Controllers\VendorController;
+use Illuminate\Support\Facades\Route;
 
 Route::withoutMiddleware([
     \Illuminate\Session\Middleware\StartSession::class,
@@ -36,6 +36,10 @@ Route::withoutMiddleware([
 
     Route::patch('purchase-reports/{id}/update-item-status-only', [PurchaseReportController::class, 'updateItemStatusOnly']);
     Route::patch('purchase-reports/{id}/po-no', [PurchaseReportController::class, 'updatePoNo']);
+    Route::delete(
+        '/purchase-reports/{id}/row',
+        [PurchaseReportController::class, 'removeRow']
+    );
     Route::patch('purchase-reports/{id}/cancel-po-no', [PurchaseReportController::class, 'cancelPoNo']);
     Route::patch('purchase-reports/{id}/return-po-no', [PurchaseReportController::class, 'returnPoNo']);
     Route::patch('purchase-reports/{id}/approve-item', [PurchaseReportController::class, 'approveItem']);
@@ -57,7 +61,6 @@ Route::withoutMiddleware([
         Route::delete('{id}', [ItemPriceController::class, 'destroy']); // Delete
     });
 
-
     Route::apiResource('modules', ModulesController::class);
     Route::apiResource('user-privileges', UserPriviligesController::class);
     Route::apiResource('departments', DepartmentController::class);
@@ -78,7 +81,6 @@ Route::withoutMiddleware([
     Route::post('users/{id}/signature', [UserController::class, 'updateSignature']);
     Route::put('users/{id}/password', [UserController::class, 'updatePassword']);
 
-    
     Route::apiResource('items', ItemController::class);
     Route::apiResource('vendors', VendorController::class);
     Route::apiResource('users', UserController::class);

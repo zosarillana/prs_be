@@ -2,6 +2,7 @@
 
 namespace App\Service\PurchaseReport;
 
+use App\Contracts\TableQueryService;
 use App\Events\Global\GlobalPurchaseReportApprovalUpdated;
 use App\Models\PurchaseReport;
 use App\Models\Tags;
@@ -10,7 +11,6 @@ use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
-use App\Contracts\TableQueryService;
 
 class PurchaseReportService implements TableQueryService
 {
@@ -33,18 +33,24 @@ class PurchaseReportService implements TableQueryService
         $query = PurchaseReport::with(['user', 'trUser', 'hodUser']);
 
         // 🔎 Search by fields including dates
+        // 🔎 Search by fields including dates and PO number
         if (! empty($filters['searchTerm'])) {
             $search = $filters['searchTerm'];
+
             $query->where(function ($q) use ($search) {
                 $q->where('series_no', 'like', "%{$search}%")
+                    ->orWhere('po_no', 'like', "%{$search}%")          // ✅ ADD THIS
                     ->orWhere('pr_purpose', 'like', "%{$search}%")
                     ->orWhere('department', 'like', "%{$search}%")
                     ->orWhereHas('user', function ($q) use ($search) {
                         $q->where('name', 'like', "%{$search}%")
                             ->orWhere('email', 'like', "%{$search}%");
                     })
-                    // ✅ Add date fields to search
-                    ->orWhereRaw('DATE_FORMAT(created_at, "%Y-%m-%d") LIKE ?', ["%{$search}%"]);
+                    // ✅ Date search
+                    ->orWhereRaw(
+                        'DATE_FORMAT(created_at, "%Y-%m-%d") LIKE ?',
+                        ["%{$search}%"]
+                    );
             });
         }
 
@@ -94,14 +100,14 @@ class PurchaseReportService implements TableQueryService
         if (! empty($filters['submittedFrom']) && ! empty($filters['submittedTo'])) {
             $query->whereBetween('date_submitted', [
                 $filters['submittedFrom'],
-                $filters['submittedTo']
+                $filters['submittedTo'],
             ]);
         }
 
         if (! empty($filters['neededFrom']) && ! empty($filters['neededTo'])) {
             $query->whereBetween('date_needed', [
                 $filters['neededFrom'],
-                $filters['neededTo']
+                $filters['neededTo'],
             ]);
         }
 
@@ -124,6 +130,7 @@ class PurchaseReportService implements TableQueryService
 
         return $query;
     }
+
     /**
      * Generate new Series No.
      */
@@ -148,7 +155,7 @@ class PurchaseReportService implements TableQueryService
 
             // Check for gaps in the series starting from the base number
             for ($i = $startingSeries; $i <= $maxSeries; $i++) {
-                if (!in_array($i, $existingSeries)) {
+                if (! in_array($i, $existingSeries)) {
                     // Found a gap - reuse this number
                     return $i;
                 }
@@ -161,6 +168,7 @@ class PurchaseReportService implements TableQueryService
             DB::statement('UNLOCK TABLES');
         }
     }
+
     public function storeOrUpdate(array $data): PurchaseReport
     {
         // ✅ Explicitly cast is_draft to boolean
@@ -184,7 +192,7 @@ class PurchaseReportService implements TableQueryService
         // Process tags - convert IDs to objects
         if (isset($data['tag']) && is_array($data['tag'])) {
             $tagIds = collect($data['tag'])
-                ->map(fn($tag) => is_numeric($tag) ? (int)$tag : ($tag['id'] ?? null))
+                ->map(fn ($tag) => is_numeric($tag) ? (int) $tag : ($tag['id'] ?? null))
                 ->filter()
                 ->toArray();
 
@@ -199,6 +207,7 @@ class PurchaseReportService implements TableQueryService
 
             $data['tag'] = collect($tagIds)->map(function ($tagId) use ($tags) {
                 $tag = $tags->firstWhere('id', $tagId);
+
                 return [
                     'id' => $tag?->id,
                     'description' => $tag?->description,
@@ -230,7 +239,7 @@ class PurchaseReportService implements TableQueryService
         ]);
 
         // ✅ Handle remarks - preserve existing or create new
-        if (!empty($data['id'])) {
+        if (! empty($data['id'])) {
             $existing = PurchaseReport::find($data['id']);
             if ($existing && isset($existing->remarks)) {
                 $existingRemarks = $existing->remarks;
@@ -245,7 +254,7 @@ class PurchaseReportService implements TableQueryService
         }
 
         // Ensure remarks array matches item count
-        if (!isset($data['remarks']) || count($data['remarks']) !== $itemCount) {
+        if (! isset($data['remarks']) || count($data['remarks']) !== $itemCount) {
             $data['remarks'] = array_pad($data['remarks'] ?? [], $itemCount, '');
         }
 
@@ -262,7 +271,7 @@ class PurchaseReportService implements TableQueryService
         ]);
 
         // Update existing record
-        if (!empty($data['id'])) {
+        if (! empty($data['id'])) {
             $existing = PurchaseReport::find($data['id']);
             if ($existing) {
                 $existing->update($data);
@@ -315,13 +324,14 @@ class PurchaseReportService implements TableQueryService
         ]);
 
         // ✅ If 'tag' contains IDs (not objects yet), fetch their descriptions + departments
-        if (isset($data['tag']) && is_array($data['tag']) && isset($data['tag'][0]) && !is_array($data['tag'][0])) {
+        if (isset($data['tag']) && is_array($data['tag']) && isset($data['tag'][0]) && ! is_array($data['tag'][0])) {
             $tags = Tags::with('department')
                 ->whereIn('id', $data['tag'])
                 ->get();
 
             $data['tag'] = collect($data['tag'])->map(function ($tagId) use ($tags) {
                 $tag = $tags->firstWhere('id', $tagId);
+
                 return [
                     'id' => $tag?->id,
                     'description' => $tag?->description,
@@ -352,7 +362,7 @@ class PurchaseReportService implements TableQueryService
         ]);
 
         // ✅ Handle item_status updates
-        if ($newItemCount !== $oldItemCount || !isset($data['item_status'])) {
+        if ($newItemCount !== $oldItemCount || ! isset($data['item_status'])) {
             // Item count changed OR no item_status provided - regenerate
 
             if ($isDraft) {
@@ -364,7 +374,7 @@ class PurchaseReportService implements TableQueryService
             }
         } else {
             // Item count same - check if we're submitting a draft
-            if (!$isDraft && $report->pr_status === 'drafted') {
+            if (! $isDraft && $report->pr_status === 'drafted') {
                 // ✅ CRITICAL FIX: Submitting a previously drafted PR
                 // All items become pending
                 $data['item_status'] = array_fill(0, $newItemCount, 'pending');
@@ -423,7 +433,7 @@ class PurchaseReportService implements TableQueryService
         $report = PurchaseReport::findOrFail($id);
 
         // ✅ Only allow specific statuses
-        if (!in_array($status, ['pending', 'delivered', 'partial'])) {
+        if (! in_array($status, ['pending', 'delivered', 'partial'])) {
             throw new \InvalidArgumentException("Invalid delivery status: {$status}");
         }
 
@@ -453,5 +463,40 @@ class PurchaseReportService implements TableQueryService
         $report = PurchaseReport::findOrFail($id);
 
         return $report->delete();
+    }
+
+    public function removeItemRow(int $id, int $rowIndex): PurchaseReport
+    {
+        $report = PurchaseReport::findOrFail($id);
+
+        $removeAtIndex = function (?array $array) use ($rowIndex) {
+            if (! is_array($array)) {
+                return $array;
+            }
+
+            if (! array_key_exists($rowIndex, $array)) {
+                return array_values($array);
+            }
+
+            unset($array[$rowIndex]);
+
+            return array_values($array); // reindex
+        };
+
+        $report->quantity = $removeAtIndex($report->quantity);
+        $report->unit = $removeAtIndex($report->unit);
+        $report->item_description = $removeAtIndex($report->item_description);
+        $report->tag = $removeAtIndex($report->tag);
+        $report->remarks = $removeAtIndex($report->remarks);
+        $report->item_status = $removeAtIndex($report->item_status);
+
+        // Optional safety: if no items left
+        if (empty($report->item_status)) {
+            $report->pr_status = 'drafted';
+        }
+
+        $report->save();
+
+        return $report->fresh();
     }
 }

@@ -88,7 +88,8 @@ class MapPurchaseReport
      * ✅ Normalize the tag data
      * Handles both legacy (array of strings) and new structured format
      */
-    protected static function mapTags($tags): array
+    protected static function 
+    mapTags($tags): array
     {
         if (empty($tags)) {
             return [];

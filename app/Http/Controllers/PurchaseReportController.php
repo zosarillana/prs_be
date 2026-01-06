@@ -10,20 +10,20 @@ use App\Http\Requests\PurchaseReport\UpdatePurchaseReportRequest;
 use App\Models\PurchaseReport;
 use App\Models\User;
 use App\Notifications\NewMessageNotification;
-use App\Service\DateFilter\DateFilterService;
 use App\Service\Paginator\PaginatorService;
 use App\Service\PurchaseReport\ApprovalPrService;
 use App\Service\PurchaseReport\PurchaseReportNotificationService;
 use App\Service\PurchaseReport\PurchaseReportService;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Notification;
 use Illuminate\Support\Facades\Cache;
-
+use Illuminate\Support\Facades\Notification;
 
 class PurchaseReportController extends Controller
 {
     protected $purchaseReportService;
+
     protected $approvalPrService;
+
     protected $notificationService;
 
     public function __construct(
@@ -36,7 +36,6 @@ class PurchaseReportController extends Controller
         $this->notificationService = $notificationService;
     }
 
-
     /**
      * Display a listing of purchase reports.
      */
@@ -45,7 +44,7 @@ class PurchaseReportController extends Controller
         $result = QueryHelper::buildAndPaginate($request, $purchaseReportService, $paginator);
 
         $result['items'] = collect($result['items'])
-            ->map(fn($report) => MapPurchaseReport::map($report))
+            ->map(fn ($report) => MapPurchaseReport::map($report))
             ->toArray();
 
         return response()->json($result);
@@ -75,7 +74,8 @@ class PurchaseReportController extends Controller
                 'sortBy',
                 'sortOrder',
                 'completedTr',
-                'ownDepartment'
+                'ownDepartment',
+                'tagDescription',
             ])
         );
 
@@ -89,28 +89,40 @@ class PurchaseReportController extends Controller
             $user
         );
 
-        // ✅ Replace DateFilterService with simple whereDate
-        if (!empty($queryParams['fromDate'])) {
+        // Date filters
+        if (! empty($queryParams['fromDate'])) {
             $filtered->whereDate('created_at', '>=', $queryParams['fromDate']);
         }
-        if (!empty($queryParams['toDate'])) {
+        if (! empty($queryParams['toDate'])) {
             $filtered->whereDate('created_at', '<=', $queryParams['toDate']);
         }
 
-        // Add this to see the SQL
+        // ✅ TAG FILTER — HERE
+        if (! empty($queryParams['tagDescription'])) {
+            $tag = $queryParams['tagDescription'];
+
+            $filtered->whereRaw("
+        JSON_SEARCH(tag, 'one', ?) IS NOT NULL
+        ", [$tag]);
+        }
+
+        // Sorting
+        $filtered = $filtered->reorder('id', 'desc');
+
+        // Debug SQL (now includes tag filter)
         \Log::info($filtered->toSql());
         \Log::info($filtered->getBindings());
 
-        $filtered = $filtered->reorder('id', 'desc');
-
+        // Pagination
         $result = $paginator->paginate(
             $filtered,
             $request->input('pageNumber', 1),
             $request->input('pageSize', 10)
         );
 
+        // Mapping
         $result['items'] = collect($result['items'])
-            ->map(fn($r) => MapPurchaseReport::mapTable($r))
+            ->map(fn ($r) => MapPurchaseReport::mapTable($r))
             ->toArray();
 
         return response()->json($result);
@@ -126,6 +138,7 @@ class PurchaseReportController extends Controller
                 'searchTerm',
                 'statusTerm',
                 'prStatusTerm',
+                'po_no',
                 'submittedFrom',
                 'submittedTo',
                 'neededFrom',
@@ -135,7 +148,7 @@ class PurchaseReportController extends Controller
                 'sortBy',
                 'sortOrder',
                 'completedTr',
-                'ownDepartment'
+                'ownDepartment',
             ])
         );
 
@@ -148,11 +161,11 @@ class PurchaseReportController extends Controller
         $filtered = $purchaseReportService->getQuery($queryParams);
 
         // ✅ Simple date filtering
-        if (!empty($queryParams['fromDate'])) {
+        if (! empty($queryParams['fromDate'])) {
             $filtered->whereRaw('DATE(created_at) >= ?', [$queryParams['fromDate']]);
         }
 
-        if (!empty($queryParams['toDate'])) {
+        if (! empty($queryParams['toDate'])) {
             $filtered->whereRaw('DATE(created_at) <= ?', [$queryParams['toDate']]);
         }
 
@@ -165,7 +178,7 @@ class PurchaseReportController extends Controller
         );
 
         $result['items'] = collect($result['items'])
-            ->map(fn($r) => MapPurchaseReport::mapTable($r))
+            ->map(fn ($r) => MapPurchaseReport::mapTable($r))
             ->toArray();
 
         return response()->json($result);
@@ -197,7 +210,7 @@ class PurchaseReportController extends Controller
         // If no records exist, start from the beginning
         if (empty($existingSeries)) {
             return response()->json([
-                "next_series_no" => $startingSeries
+                'next_series_no' => $startingSeries,
             ]);
         }
 
@@ -206,17 +219,17 @@ class PurchaseReportController extends Controller
 
         // Check for gaps in the series starting from the base number
         for ($i = $startingSeries; $i <= $maxSeries; $i++) {
-            if (!in_array($i, $existingSeries)) {
+            if (! in_array($i, $existingSeries)) {
                 // Found a gap - reuse this number
                 return response()->json([
-                    "next_series_no" => $i
+                    'next_series_no' => $i,
                 ]);
             }
         }
 
         // No gaps found, increment from the maximum
         return response()->json([
-            "next_series_no" => $maxSeries + 1
+            'next_series_no' => $maxSeries + 1,
         ]);
     }
 
@@ -324,7 +337,7 @@ class PurchaseReportController extends Controller
         $roles = $user->role ?? [];
         $departments = $user->department ?? [];
 
-        $cacheKey = "summary_counts_{$user->id}_" . md5(json_encode($roles) . json_encode($departments));
+        $cacheKey = "summary_counts_{$user->id}_".md5(json_encode($roles).json_encode($departments));
 
         return Cache::remember($cacheKey, 60, function () use ($user, $roles) {
 
@@ -368,9 +381,10 @@ class PurchaseReportController extends Controller
             ];
 
             // Add department total for ALL users with departments
-            if (!empty($user->department)) {
+            if (! empty($user->department)) {
                 $deptValues = collect($user->department)->flatMap(function ($dept) {
                     $slug = preg_replace('/[^A-Za-z0-9_.-]/', '_', $dept);
+
                     return [$dept, $slug];
                 })->all();
 
@@ -393,7 +407,7 @@ class PurchaseReportController extends Controller
     {
         // Validate PO number as a string (keep formatting)
         $validated = $request->validate([
-            'po_no' => 'required|string'
+            'po_no' => 'required|string',
         ]);
 
         $purchaserId = $request->user()->id;
@@ -415,21 +429,20 @@ class PurchaseReportController extends Controller
 
         // Send notifications
         Notification::send($recipients, new NewMessageNotification([
-            'title'      => 'New PO Created',
-            'report_id'  => $report->id,
-            'series_no'  => $report->series_no,
-            'po_no'      => $report->po_no,
+            'title' => 'New PO Created',
+            'report_id' => $report->id,
+            'series_no' => $report->series_no,
+            'po_no' => $report->po_no,
             'created_by' => $report->user->name ?? 'Unknown',
-            'pr_status'  => $report->pr_status,
-            'po_status'  => $report->po_status,
+            'pr_status' => $report->pr_status,
+            'po_status' => $report->po_status,
         ]));
 
         return response()->json([
             'message' => 'PO number updated and status set to Closed',
-            'report'  => $report,
+            'report' => $report,
         ], 200);
     }
-
 
     public function cancelPoNo($id)
     {
@@ -444,21 +457,20 @@ class PurchaseReportController extends Controller
             ->unique('id');
 
         Notification::send($recipients, new NewMessageNotification([
-            'title'      => 'PO Cancelled',
-            'report_id'  => $report->id,
-            'series_no'  => $report->series_no,
-            'po_no'      => $report->po_no,
+            'title' => 'PO Cancelled',
+            'report_id' => $report->id,
+            'series_no' => $report->series_no,
+            'po_no' => $report->po_no,
             'created_by' => $report->user->name ?? 'Unknown',
-            'pr_status'  => $report->pr_status,
-            'po_status'  => $report->po_status,
+            'pr_status' => $report->pr_status,
+            'po_status' => $report->po_status,
         ]));
 
         return response()->json([
             'message' => 'PO number cancelled successfully',
-            'report'  => $report,
+            'report' => $report,
         ], 200);
     }
-
 
     public function returnPoNo(Request $request, $id)
     {
@@ -473,18 +485,18 @@ class PurchaseReportController extends Controller
             ->unique('id');
 
         Notification::send($recipients, new NewMessageNotification([
-            'title'      => 'PO Returned',
-            'report_id'  => $report->id,
-            'series_no'  => $report->series_no, // important
-            'po_no'      => $report->po_no,
+            'title' => 'PO Returned',
+            'report_id' => $report->id,
+            'series_no' => $report->series_no, // important
+            'po_no' => $report->po_no,
             'created_by' => $report->user->name ?? 'Unknown',
-            'pr_status'  => $report->pr_status,
-            'po_status'  => $report->po_status,
+            'pr_status' => $report->pr_status,
+            'po_status' => $report->po_status,
         ]));
 
         return response()->json([
             'message' => 'PO number returned successfully',
-            'report'  => $report,
+            'report' => $report,
         ], 200);
     }
 
@@ -504,7 +516,7 @@ class PurchaseReportController extends Controller
         // ✅ Now compares only dates, not timestamps
         if ($poApprovedDate->lt($poCreatedDate)) {
             return response()->json([
-                'error' => 'Invalid date: PO Approved date cannot be earlier than PO Created date.'
+                'error' => 'Invalid date: PO Approved date cannot be earlier than PO Created date.',
             ], 422);
         }
 
@@ -537,5 +549,19 @@ class PurchaseReportController extends Controller
             'message' => 'Delivery status updated successfully.',
             'report' => $report,
         ], 200);
+    }
+
+    public function removeRow(Request $request, $id)
+    {
+        $request->validate([
+            'row_index' => 'required|integer|min:0',
+        ]);
+
+        $report = $this->purchaseReportService->removeItemRow(
+            $id,
+            $request->row_index
+        );
+
+        return response()->json($report);
     }
 }

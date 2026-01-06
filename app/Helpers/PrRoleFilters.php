@@ -13,21 +13,21 @@ class PrRoleFilters
         $departments = collect($user->department ?? [])->map(function ($dept) {
             return [
                 'original' => $dept,
-                'slug'     => preg_replace('/[^A-Za-z0-9_.-]/', '_', $dept),
+                'slug' => preg_replace('/[^A-Za-z0-9_.-]/', '_', $dept),
             ];
         });
 
-        // 🔹 Admin + purchasing always see everything (no filters applied)
-        if ($roles->contains('admin') || $roles->contains('purchasing')) {
+        // 🔹 Admin + purchasing + ovs always see everything (no filters applied)
+        if ($roles->contains('admin') || $roles->contains('purchasing') || $roles->contains('ovs')) {
             return $query;
         }
 
-        $isTR  = $roles->contains('technical_reviewer');
+        $isTR = $roles->contains('technical_reviewer');
         $isHOD = $roles->contains('hod');
         $isUser = $roles->contains('user');
 
         // Build a flat department list
-        $deptValues = $departments->flatMap(fn($d) => [$d['original'], $d['slug']])->all();
+        $deptValues = $departments->flatMap(fn ($d) => [$d['original'], $d['slug']])->all();
 
         /**
          * 🔥 DEPARTMENT-TAG MATCHER FOR TR
@@ -48,7 +48,7 @@ class PrRoleFilters
          * 1) Technical Reviewer ONLY
          * ----------------------------------------
          */
-        if ($isTR && !$isHOD && !$isUser) {
+        if ($isTR && ! $isHOD && ! $isUser) {
             return $query->where(function ($q) use ($applyDepartmentTagFilter) {
                 // A) Pending TR work
                 $q->where(function ($sub) use ($applyDepartmentTagFilter) {
@@ -70,10 +70,11 @@ class PrRoleFilters
          * ----------------------------------------
          * Simple: Just check department column (like old code)
          */
-        if ($isHOD && !$isTR && !$isUser) {
-            if (!empty($deptValues)) {
+        if ($isHOD && ! $isTR && ! $isUser) {
+            if (! empty($deptValues)) {
                 return $query->whereIn('department', $deptValues);
             }
+
             return $query;
         }
 
@@ -83,10 +84,11 @@ class PrRoleFilters
          * ----------------------------------------
          * Shows items where department column matches
          */
-        if ($isUser && !$isHOD && !$isTR) {
-            if (!empty($deptValues)) {
+        if ($isUser && ! $isHOD && ! $isTR) {
+            if (! empty($deptValues)) {
                 return $query->whereIn('department', $deptValues);
             }
+
             return $query;
         }
 
@@ -95,10 +97,11 @@ class PrRoleFilters
          * 4) HOD + USER COMBINATION
          * ----------------------------------------
          */
-        if ($isHOD && $isUser && !$isTR) {
-            if (!empty($deptValues)) {
+        if ($isHOD && $isUser && ! $isTR) {
+            if (! empty($deptValues)) {
                 return $query->whereIn('department', $deptValues);
             }
+
             return $query;
         }
 
@@ -107,10 +110,10 @@ class PrRoleFilters
          * 5) HOD + TR COMBINATION
          * ----------------------------------------
          */
-        if ($isHOD && $isTR && !$isUser) {
+        if ($isHOD && $isTR && ! $isUser) {
             return $query->where(function ($outer) use ($deptValues, $applyDepartmentTagFilter) {
                 // HOD part - just department column
-                if (!empty($deptValues)) {
+                if (! empty($deptValues)) {
                     $outer->orWhereIn('department', $deptValues);
                 }
 
@@ -136,7 +139,7 @@ class PrRoleFilters
         if ($isHOD && $isTR && $isUser) {
             return $query->where(function ($outer) use ($deptValues, $applyDepartmentTagFilter) {
                 // HOD/User part - just department column
-                if (!empty($deptValues)) {
+                if (! empty($deptValues)) {
                     $outer->orWhereIn('department', $deptValues);
                 }
 
@@ -165,11 +168,11 @@ class PrRoleFilters
         $departments = collect($user->department ?? [])->map(function ($dept) {
             return [
                 'original' => $dept,
-                'slug'     => preg_replace('/[^A-Za-z0-9_.-]/', '_', $dept),
+                'slug' => preg_replace('/[^A-Za-z0-9_.-]/', '_', $dept),
             ];
         });
 
-        $deptValues = $departments->flatMap(fn($d) => [$d['original'], $d['slug']])->all();
+        $deptValues = $departments->flatMap(fn ($d) => [$d['original'], $d['slug']])->all();
 
         if (empty($deptValues)) {
             return $query;
