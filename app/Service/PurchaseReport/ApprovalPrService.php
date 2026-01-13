@@ -2,8 +2,8 @@
 
 namespace App\Service\PurchaseReport;
 
-use App\Models\PurchaseReport;
 use App\Events\Global\GlobalPurchaseReportApprovalUpdated;
+use App\Models\PurchaseReport;
 use Illuminate\Support\Facades\Cache;
 
 class ApprovalPrService
@@ -28,10 +28,10 @@ class ApprovalPrService
         $itemStatus = $report->item_status ?? [];
         $remarks = $report->remarks ?? [];
 
-        if (!is_array($itemStatus)) {
+        if (! is_array($itemStatus)) {
             $itemStatus = [];
         }
-        if (!is_array($remarks)) {
+        if (! is_array($remarks)) {
             $remarks = [];
         }
 
@@ -41,26 +41,36 @@ class ApprovalPrService
             $remarks[$index] = $remark;
         }
 
-        /**
-         * ✅ Determine PR Status
-         * Logic:
-         * - If ANY item is rejected → pr_status = 'rejected'
-         * - Else if any item pending_tr → 'on_hold_tr'
-         * - Else if any item pending → 'on_hold'
-         * - Else → 'for_approval'
-         */
-        if (in_array('rejected', $itemStatus, true)) {
-            $prStatus = 'rejected';
-            $poStatus = null; // ✅ Also set PO status rejected
-        } elseif (in_array('pending_tr', $itemStatus, true)) {
-            $prStatus = 'on_hold_tr';
+        // ✅ Determine PR Status (ALL rejected → rejected)
+        $totalItems = count($report->item_description);
+
+        // 🔴 HARD EXCEPTION — return always wins
+        if (in_array('return', $itemStatus, true)) {
+            $prStatus = 'on_hold_return';
             $poStatus = $report->po_status ?? null;
-        } elseif (in_array('pending', $itemStatus, true)) {
-            $prStatus = 'on_hold';
-            $poStatus = $report->po_status ?? null;
+
         } else {
-            $prStatus = 'for_approval';
-            $poStatus = $report->po_status ?? null;
+            $rejectedCount = count(array_filter(
+                $itemStatus,
+                fn ($s) => $s === 'rejected'
+            ));
+
+            if ($rejectedCount === $totalItems && $totalItems > 0) {
+                $prStatus = 'rejected';
+                $poStatus = null;
+
+            } elseif (in_array('pending_tr', $itemStatus, true)) {
+                $prStatus = 'on_hold_tr';
+                $poStatus = $report->po_status ?? null;
+
+            } elseif (in_array('pending', $itemStatus, true)) {
+                $prStatus = 'on_hold';
+                $poStatus = $report->po_status ?? null;
+
+            } else {
+                $prStatus = 'for_approval';
+                $poStatus = $report->po_status ?? null;
+            }
         }
 
         // ✅ Prepare update data
@@ -71,13 +81,13 @@ class ApprovalPrService
             'po_status' => $poStatus, // ✅ Added
         ];
 
-        // ✅ Attach approver info
-        if ($asRole === 'technical_reviewer' || $asRole === 'both') {
+        // Attach approver info (explicit)
+        if ($asRole === 'technical_reviewer') {
             $updateData['tr_user_id'] = $loggedUserId;
             $updateData['tr_signed_at'] = now();
         }
 
-        if ($asRole === 'hod' || $asRole === 'both') {
+        if ($asRole === 'hod') {
             $updateData['hod_user_id'] = $loggedUserId;
             $updateData['hod_signed_at'] = now();
         }
@@ -88,9 +98,10 @@ class ApprovalPrService
         // ✅ Trigger notifications based on PR status
         match ($report->pr_status) {
             'for_approval' => $this->notify->notifyPurchasingForApproval($report),
-            'on_hold_tr'   => $this->notify->notifyTechnicalReviewOnHold($report),
-            'rejected'     => $this->notify->notifyRejected($report),
-            default        => null,
+            'on_hold_tr' => $this->notify->notifyTechnicalReviewOnHold($report),
+            'on_hold_return' => $this->notify->notifyReturned($report),
+            'rejected' => $this->notify->notifyRejected($report),
+            default => null,
         };
 
         // ✅ Clear cache BEFORE notifications
@@ -99,7 +110,6 @@ class ApprovalPrService
 
         return $report;
     }
-
 
     /**
      * Send notifications based on PR status
@@ -145,7 +155,7 @@ class ApprovalPrService
 
         // ✅ Update all item statuses to 'cancelled'
         if (is_array($report->item_status)) {
-            $report->item_status = array_map(fn() => 'cancelled', $report->item_status);
+            $report->item_status = array_map(fn () => 'cancelled', $report->item_status);
         }
 
         $report->save();
@@ -174,7 +184,7 @@ class ApprovalPrService
 
         // ✅ Update all item statuses to 'returned'
         if (is_array($report->item_status)) {
-            $report->item_status = array_map(fn() => 'returned', $report->item_status);
+            $report->item_status = array_map(fn () => 'returned', $report->item_status);
         }
 
         // ✅ Clear TR / HOD approvals and signatures
@@ -200,7 +210,6 @@ class ApprovalPrService
 
         return $report;
     }
-
 
     public function poApproveDate($id, $status, $approvedDate, $purchaserId)
     {

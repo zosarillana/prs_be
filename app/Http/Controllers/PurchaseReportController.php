@@ -6,7 +6,6 @@ use App\Helpers\MapPurchaseReport;
 use App\Helpers\PrRoleFilters;
 use App\Helpers\QueryHelper;
 use App\Http\Requests\PurchaseReport\StorePurchaseReportRequest;
-use App\Http\Requests\PurchaseReport\UpdatePurchaseReportRequest;
 use App\Models\PurchaseReport;
 use App\Models\User;
 use App\Notifications\NewMessageNotification;
@@ -76,6 +75,7 @@ class PurchaseReportController extends Controller
                 'completedTr',
                 'ownDepartment',
                 'tagDescription',
+                'purchaserName',
             ])
         );
 
@@ -93,23 +93,103 @@ class PurchaseReportController extends Controller
         if (! empty($queryParams['fromDate'])) {
             $filtered->whereDate('created_at', '>=', $queryParams['fromDate']);
         }
+
         if (! empty($queryParams['toDate'])) {
             $filtered->whereDate('created_at', '<=', $queryParams['toDate']);
         }
 
-        // ✅ TAG FILTER — HERE
+        // ✅ TAG FILTER
         if (! empty($queryParams['tagDescription'])) {
-            $tag = $queryParams['tagDescription'];
+            $filtered->whereRaw(
+                "JSON_SEARCH(tag, 'one', ?) IS NOT NULL",
+                [$queryParams['tagDescription']]
+            );
+        }
 
-            $filtered->whereRaw("
-        JSON_SEARCH(tag, 'one', ?) IS NOT NULL
-        ", [$tag]);
+        // ✅ PURCHASER NAME FILTER (MariaDB compatible)
+        if (! empty($queryParams['purchaserName'])) {
+            $name = $queryParams['purchaserName'];
+            $searchTerm = '%'.strtolower($name).'%';
+
+            $filtered->where(function ($q) use ($searchTerm) {
+                // Search direct purchaser_id
+                $q->whereHas('purchaserUser', function ($subQ) use ($searchTerm) {
+                    $subQ->whereRaw('LOWER(name) LIKE ?', [$searchTerm]);
+                })
+                // OR search via tag-based UserPrivileges resolution (MariaDB compatible)
+                    ->orWhereExists(function ($subQ) use ($searchTerm) {
+                        $subQ->select(\DB::raw(1))
+                            ->from('user_privileges')
+                            ->join('users', 'users.id', '=', 'user_privileges.user_id')
+                            ->whereRaw('LOWER(users.name) LIKE ?', [$searchTerm])
+                            ->whereJsonLength('users.role', 1)
+                            ->whereJsonContains('users.role', 'purchasing')
+                            ->whereRaw("
+                        EXISTS (
+                            SELECT 1
+                            FROM (
+                                SELECT 0 as idx UNION ALL SELECT 1 UNION ALL SELECT 2 UNION ALL 
+                                SELECT 3 UNION ALL SELECT 4 UNION ALL SELECT 5 UNION ALL 
+                                SELECT 6 UNION ALL SELECT 7 UNION ALL SELECT 8 UNION ALL 
+                                SELECT 9 UNION ALL SELECT 10 UNION ALL SELECT 11 UNION ALL 
+                                SELECT 12 UNION ALL SELECT 13 UNION ALL SELECT 14 UNION ALL SELECT 15
+                            ) indices
+                            WHERE JSON_EXTRACT(purchase_reports.tag, CONCAT('$[', indices.idx, '].id')) IS NOT NULL
+                            AND JSON_CONTAINS(
+                                user_privileges.tag_ids,
+                                JSON_EXTRACT(purchase_reports.tag, CONCAT('$[', indices.idx, '].id'))
+                            )
+                        )
+                    ");
+                    });
+            });
+        }
+
+        // ✅ SEARCH TERM FILTER (MariaDB compatible)
+        if (! empty($queryParams['searchTerm'])) {
+            $term = '%'.strtolower($queryParams['searchTerm']).'%';
+
+            $filtered->where(function ($q) use ($term) {
+                $q->whereRaw('LOWER(series_no) LIKE ?', [$term])
+                    ->orWhereRaw('LOWER(pr_purpose) LIKE ?', [$term])
+                    ->orWhereRaw('LOWER(department) LIKE ?', [$term])
+                    // Search direct purchaser
+                    ->orWhereHas('purchaserUser', function ($subQ) use ($term) {
+                        $subQ->whereRaw('LOWER(name) LIKE ?', [$term]);
+                    })
+                    // Search resolved purchaser via tags (MariaDB compatible)
+                    ->orWhereExists(function ($subQ) use ($term) {
+                        $subQ->select(\DB::raw(1))
+                            ->from('user_privileges')
+                            ->join('users', 'users.id', '=', 'user_privileges.user_id')
+                            ->whereRaw('LOWER(users.name) LIKE ?', [$term])
+                            ->whereJsonLength('users.role', 1)
+                            ->whereJsonContains('users.role', 'purchasing')
+                            ->whereRaw("
+                            EXISTS (
+                                SELECT 1
+                                FROM (
+                                    SELECT 0 as idx UNION ALL SELECT 1 UNION ALL SELECT 2 UNION ALL 
+                                    SELECT 3 UNION ALL SELECT 4 UNION ALL SELECT 5 UNION ALL 
+                                    SELECT 6 UNION ALL SELECT 7 UNION ALL SELECT 8 UNION ALL 
+                                    SELECT 9 UNION ALL SELECT 10 UNION ALL SELECT 11 UNION ALL 
+                                    SELECT 12 UNION ALL SELECT 13 UNION ALL SELECT 14 UNION ALL SELECT 15
+                                ) indices
+                                WHERE JSON_EXTRACT(purchase_reports.tag, CONCAT('$[', indices.idx, '].id')) IS NOT NULL
+                                AND JSON_CONTAINS(
+                                    user_privileges.tag_ids,
+                                    JSON_EXTRACT(purchase_reports.tag, CONCAT('$[', indices.idx, '].id'))
+                                )
+                            )
+                        ");
+                    });
+            });
         }
 
         // Sorting
-        $filtered = $filtered->reorder('id', 'desc');
+        $filtered->reorder('id', 'desc');
 
-        // Debug SQL (now includes tag filter)
+        // Debug
         \Log::info($filtered->toSql());
         \Log::info($filtered->getBindings());
 
@@ -248,11 +328,22 @@ class PurchaseReportController extends Controller
     /**
      * Update a purchase report.
      */
-    public function update(UpdatePurchaseReportRequest $request, $id)
+    public function update(Request $request, int $id)
     {
-        $report = $this->purchaseReportService->update($id, $request->validated());
+        \Log::info('🔍 [CONTROLLER] Raw request data', [
+            'all' => $request->all(),
+            'has_item_status' => $request->has('item_status'),
+            'item_status' => $request->input('item_status'),
+        ]);
 
-        return response()->json($report);
+        $data = $request->all(); // ✅ Changed from validated() to all()
+
+        \Log::info('🔍 [CONTROLLER] Passing to service', [
+            'data' => $data,
+            'has_item_status' => isset($data['item_status']),
+        ]);
+
+        return $this->purchaseReportService->update($id, $data);
     }
 
     /**
@@ -272,7 +363,7 @@ class PurchaseReportController extends Controller
     {
         $validated = $request->validate([
             'index' => 'required|integer|min:0',
-            'status' => 'required|string|in:approved,rejected,pending_tr',
+            'status' => 'required|string|in:approved,rejected,pending_tr,return',
             'remark' => 'nullable|string',
             'as_role' => 'nullable|string|in:technical_reviewer,hod,both',
             'logged_user_id' => 'required|integer|exists:users,id', // ✅ add this
@@ -504,7 +595,7 @@ class PurchaseReportController extends Controller
     {
         $validated = $request->validate([
             'date' => 'required|date',
-            'status' => 'required|string|in:approved,rejected,pending_tr,canceled',
+            'status' => 'required|string|in:approved,rejected,pending_tr,canceled,return',
         ]);
 
         $report = PurchaseReport::findOrFail($id);

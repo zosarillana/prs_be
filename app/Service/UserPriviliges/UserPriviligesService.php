@@ -11,22 +11,21 @@ class UserPriviligesService
     /**
      * Get all user privileges with optional filters
      *
-     * @param array $filters Optional filters
-     *   - user_id: int|array - Filter by user ID(s)
-     *   - tag_ids: array - Filter by tag IDs (checks if ANY tag matches)
-     *   - module_ids: array - Filter by module IDs (checks if ANY module matches)
-     *   - with: array - Additional relationships to eager load
-     *   - sort_by: string - Column to sort by (default: 'id')
-     *   - sort_order: string - Sort order 'asc' or 'desc' (default: 'asc')
-     *   - limit: int - Limit results
-     * @return Collection
+     * @param  array  $filters  Optional filters
+     *                          - user_id: int|array - Filter by user ID(s)
+     *                          - tag_ids: array - Filter by tag IDs (checks if ANY tag matches)
+     *                          - module_ids: array - Filter by module IDs (checks if ANY module matches)
+     *                          - with: array - Additional relationships to eager load
+     *                          - sort_by: string - Column to sort by (default: 'id')
+     *                          - sort_order: string - Sort order 'asc' or 'desc' (default: 'asc')
+     *                          - limit: int - Limit results
      */
     public function getAll(array $filters = []): Collection
     {
         $query = UserPrivileges::with('user');
 
         // Filter by user_id (single or multiple)
-        if (!empty($filters['user_id'])) {
+        if (! empty($filters['user_id'])) {
             if (is_array($filters['user_id'])) {
                 $query->whereIn('user_id', $filters['user_id']);
             } else {
@@ -35,7 +34,7 @@ class UserPriviligesService
         }
 
         // Filter by tag_ids (checks if ANY tag exists in the array)
-        if (!empty($filters['tag_ids']) && is_array($filters['tag_ids'])) {
+        if (! empty($filters['tag_ids']) && is_array($filters['tag_ids'])) {
             $query->where(function ($q) use ($filters) {
                 foreach ($filters['tag_ids'] as $tagId) {
                     $q->orWhereJsonContains('tag_ids', $tagId);
@@ -43,8 +42,15 @@ class UserPriviligesService
             });
         }
 
+        // Filter by user role (e.g. purchasing)
+        if (! empty($filters['role'])) {
+            $query->whereHas('user', function ($q) use ($filters) {
+                $q->whereJsonContains('role', $filters['role']);
+            });
+        }
+
         // Filter by module_ids (checks if ANY module exists in the array)
-        if (!empty($filters['module_ids']) && is_array($filters['module_ids'])) {
+        if (! empty($filters['module_ids']) && is_array($filters['module_ids'])) {
             $query->where(function ($q) use ($filters) {
                 foreach ($filters['module_ids'] as $moduleId) {
                     $q->orWhereJsonContains('module_ids', $moduleId);
@@ -53,7 +59,7 @@ class UserPriviligesService
         }
 
         // Additional eager loading
-        if (!empty($filters['with']) && is_array($filters['with'])) {
+        if (! empty($filters['with']) && is_array($filters['with'])) {
             $query->with($filters['with']);
         }
 
@@ -63,7 +69,7 @@ class UserPriviligesService
         $query->orderBy($sortBy, $sortOrder);
 
         // Limit
-        if (!empty($filters['limit'])) {
+        if (! empty($filters['limit'])) {
             $query->limit($filters['limit']);
         }
 
@@ -79,8 +85,8 @@ class UserPriviligesService
     {
         return DB::transaction(function () use ($data) {
             return UserPrivileges::create([
-                'user_id'    => $data['user_id'],
-                'tag_ids'    => $data['tag_ids'] ?? [],
+                'user_id' => $data['user_id'],
+                'tag_ids' => $data['tag_ids'] ?? [],
                 'module_ids' => $data['module_ids'] ?? [],
             ]);
         });
@@ -90,9 +96,10 @@ class UserPriviligesService
     {
         return DB::transaction(function () use ($privilege, $data) {
             $privilege->update([
-                'tag_ids'    => $data['tag_ids'] ?? $privilege->tag_ids,
+                'tag_ids' => $data['tag_ids'] ?? $privilege->tag_ids,
                 'module_ids' => $data['module_ids'] ?? $privilege->module_ids,
             ]);
+
             return $privilege;
         });
     }

@@ -4,6 +4,7 @@ namespace App\Helpers;
 
 use App\Models\PurchaseReport;
 use App\Models\User;
+use App\Models\UserPrivileges;
 
 class MapPurchaseReport
 {
@@ -13,6 +14,7 @@ class MapPurchaseReport
             'id' => $report->id,
             'series_no' => $report->series_no,
             'pr_purpose' => $report->pr_purpose,
+            'purchaser_id' => self::mapPurchaser($report),
             'department' => $report->department,
             'created_at' => $report->created_at,
             'date_submitted' => $report->date_submitted ? $report->date_submitted->format('Y-m-d') : null,
@@ -23,7 +25,6 @@ class MapPurchaseReport
 
             // ✅ Updated: normalize tags to ensure consistent array structure
             'tag' => self::mapTags($report->tag),
-
             'item_status' => $report->item_status,
             'remarks' => $report->remarks,
             'user' => $report->user ? self::mapUser($report->user) : null,
@@ -53,7 +54,8 @@ class MapPurchaseReport
             'po_status' => $report->po_status,
             'po_created_date' => $report->po_created_date ? $report->po_created_date->format('Y-m-d') : null,
             'po_approved_date' => $report->po_approved_date ? $report->po_approved_date->format('Y-m-d') : null,
-            'purchaser_id' => $report->purchaserUser ? self::mapUser($report->purchaserUser) : null,
+            // 'purchaser_id' => $report->purchaserUser ? self::mapUser($report->purchaserUser) : null,
+            'purchaser_id' => self::mapPurchaser($report),
             'department' => $report->department,
 
             // ✅ Updated: handle structured tag arrays
@@ -88,8 +90,7 @@ class MapPurchaseReport
      * ✅ Normalize the tag data
      * Handles both legacy (array of strings) and new structured format
      */
-    protected static function 
-    mapTags($tags): array
+    protected static function mapTags($tags): array
     {
         if (empty($tags)) {
             return [];
@@ -97,7 +98,7 @@ class MapPurchaseReport
 
         // If already structured (id + description), return as-is
         if (is_array($tags) && isset($tags[0]['id'])) {
-            return array_map(fn($tag) => [
+            return array_map(fn ($tag) => [
                 'id' => $tag['id'],
                 'description' => $tag['description'] ?? null,
                 'department' => $tag['department'] ?? null,
@@ -105,10 +106,61 @@ class MapPurchaseReport
         }
 
         // Legacy fallback: convert ["Engineering_tr"] → [{"id"=>null,"description"=>"Engineering_tr"}]
-        return array_map(fn($tag) => [
+        return array_map(fn ($tag) => [
             'id' => null,
             'description' => is_string($tag) ? $tag : null,
             'department' => null,
         ], (array) $tags);
+    }
+
+    protected static function resolvePurchaser(PurchaseReport $report): ?array
+    {
+        if (empty($report->tag)) {
+            return null;
+        }
+
+        $tagIds = collect(self::mapTags($report->tag))
+            ->pluck('id')
+            ->filter()
+            ->values()
+            ->toArray();
+
+        if (empty($tagIds)) {
+            return null;
+        }
+
+        $privilege = UserPrivileges::with('user')
+            ->where(function ($query) use ($tagIds) {
+                foreach ($tagIds as $tagId) {
+                    $query->orWhereJsonContains('tag_ids', $tagId);
+                }
+            })
+            ->whereHas('user', function ($query) {
+                // 🔒 STRICT: role must be EXACTLY ["purchasing"]
+                $query->whereJsonLength('role', 1)
+                    ->whereJsonContains('role', 'purchasing');
+            })
+            ->first();
+
+        if (! $privilege || ! $privilege->user) {
+            return null;
+        }
+
+        return self::mapUser($privilege->user);
+    }
+    
+    protected static function mapPurchaser(PurchaseReport $report): ?array
+    {
+        if ($report->purchaserUser) {
+            $roles = (array) $report->purchaserUser->role;
+
+            // ✅ Prioritize ONLY if role is strictly ["purchasing"]
+            if (count($roles) === 1 && in_array('purchasing', $roles, true)) {
+                return self::mapUser($report->purchaserUser);
+            }
+        }
+
+        // ❌ Otherwise (multiple roles OR no purchaser) → resolve dynamically
+        return self::resolvePurchaser($report);
     }
 }

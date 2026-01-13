@@ -30,7 +30,7 @@ class PurchaseReportService implements TableQueryService
     public function getQuery(array $filters = []): Builder
     {
         // Eager load all user relationships that the mapper expects
-        $query = PurchaseReport::with(['user', 'trUser', 'hodUser']);
+        $query = PurchaseReport::with(['user', 'trUser', 'hodUser', 'purchaserUser']);
 
         // 🔎 Search by fields including dates
         // 🔎 Search by fields including dates and PO number
@@ -361,6 +361,12 @@ class PurchaseReportService implements TableQueryService
             'incoming_is_draft_raw' => $data['is_draft'] ?? 'not set',
         ]);
 
+        // ✅ ADD THIS - Log the incoming item_status
+        \Log::info('🔧 [UPDATE] Incoming item_status', [
+            'incoming_item_status' => $data['item_status'] ?? 'not set',
+            'incoming_count' => isset($data['item_status']) ? count($data['item_status']) : 0,
+        ]);
+
         // ✅ Handle item_status updates
         if ($newItemCount !== $oldItemCount || ! isset($data['item_status'])) {
             // Item count changed OR no item_status provided - regenerate
@@ -373,18 +379,18 @@ class PurchaseReportService implements TableQueryService
                 $data['item_status'] = array_fill(0, $newItemCount, 'pending');
             }
         } else {
-            // Item count same - check if we're submitting a draft
+            // Item count same AND item_status provided
+
             if (! $isDraft && $report->pr_status === 'drafted') {
-                // ✅ CRITICAL FIX: Submitting a previously drafted PR
-                // All items become pending
+                // Submitting a previously drafted PR - all items become pending
                 $data['item_status'] = array_fill(0, $newItemCount, 'pending');
             } else {
-                // Preserve existing statuses (with rejection handling)
-                $currentStatuses = $report->item_status ?? [];
+                // ✅ Normal update: Use the incoming item_status from the request
+                $incomingStatuses = $data['item_status'];
 
                 $newStatuses = [];
-                foreach ($currentStatuses as $idx => $status) {
-                    if (in_array($status, ['rejected', 'rejected_tr'], true)) {
+                foreach ($incomingStatuses as $idx => $status) {
+                    if (in_array($status, ['rejected', 'rejected_tr', 'return'], true)) {
                         $newStatuses[$idx] = 'pending';
                     } else {
                         $newStatuses[$idx] = $status;
@@ -483,6 +489,7 @@ class PurchaseReportService implements TableQueryService
             return array_values($array); // reindex
         };
 
+        // Remove item data
         $report->quantity = $removeAtIndex($report->quantity);
         $report->unit = $removeAtIndex($report->unit);
         $report->item_description = $removeAtIndex($report->item_description);
@@ -490,9 +497,31 @@ class PurchaseReportService implements TableQueryService
         $report->remarks = $removeAtIndex($report->remarks);
         $report->item_status = $removeAtIndex($report->item_status);
 
-        // Optional safety: if no items left
-        if (empty($report->item_status)) {
+        /**
+         * ✅ Recalculate PR Status AFTER removal
+         */
+        $statuses = $report->item_status ?? [];
+        $totalItems = count($statuses);
+
+        if ($totalItems === 0) {
+            // No items left
             $report->pr_status = 'drafted';
+
+        } elseif (count(array_filter($statuses, fn ($s) => $s === 'rejected')) === $totalItems) {
+            // All rejected
+            $report->pr_status = 'rejected';
+
+        } elseif (in_array('pending_tr', $statuses, true)) {
+            // Any pending TR
+            $report->pr_status = 'on_hold_tr';
+
+        } elseif (in_array('pending', $statuses, true)) {
+            // Any pending
+            $report->pr_status = 'on_hold';
+
+        } else {
+            // All approved
+            $report->pr_status = 'for_approval';
         }
 
         $report->save();

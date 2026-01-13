@@ -73,6 +73,11 @@ class PurchaseReport extends Model
         return $this->belongsTo(User::class, 'purchaser_id');
     }
 
+    public function purchaser()
+    {
+        return $this->purchaserUser();
+    }
+
     protected static function booted()
     {
         static::created(function ($model) {
@@ -81,7 +86,7 @@ class PurchaseReport extends Model
 
         static::updated(function ($model) {
             $changes = $model->getChanges();
-            if (!empty($changes)) {
+            if (! empty($changes)) {
                 auditLog('updated', $model, $model->getOriginal(), $changes);
             }
         });
