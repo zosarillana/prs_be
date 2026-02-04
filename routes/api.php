@@ -7,6 +7,7 @@ use App\Http\Controllers\ItemEximController;
 use App\Http\Controllers\ItemPriceController;
 use App\Http\Controllers\ModulesController;
 use App\Http\Controllers\NotificationController;
+use App\Http\Controllers\PurchaseOrderController;
 use App\Http\Controllers\PurchaseReportController;
 use App\Http\Controllers\PurchaseReportProgressController;
 use App\Http\Controllers\TagsController;
@@ -35,22 +36,36 @@ Route::withoutMiddleware([
     Route::get('/purchase-reports/next-series', [PurchaseReportController::class, 'getNextSeriesNo']);
 
     Route::patch('purchase-reports/{id}/update-item-status-only', [PurchaseReportController::class, 'updateItemStatusOnly']);
-    Route::patch('purchase-reports/{id}/po-no', [PurchaseReportController::class, 'updatePoNo']);
+    // Route::patch('purchase-reports/{id}/po-no', [PurchaseReportController::class, 'updatePoNo']);
+    Route::patch('purchase-reports/{id}/sap-id', [PurchaseReportController::class, 'updateSapId']);
+    Route::prefix('purchase-reports/{pr}')->group(function () {
+        Route::post('items/{index}/approve-edit', action: [PurchaseReportController::class, 'approveEdit']);
+    });
     Route::delete(
         '/purchase-reports/{id}/row',
         [PurchaseReportController::class, 'removeRow']
     );
-    Route::patch('purchase-reports/{id}/cancel-po-no', [PurchaseReportController::class, 'cancelPoNo']);
-    Route::patch('purchase-reports/{id}/return-po-no', [PurchaseReportController::class, 'returnPoNo']);
+
+    Route::post(
+        '/purchase-reports/{id}/row',
+        [PurchaseReportController::class, 'addItem']
+    );
+    Route::patch('purchase-reports/{id}/cancel-po-no', [PurchaseOrderController::class, 'cancelPoNo']);
+    Route::patch('purchase-reports/{id}/return-po-no', [PurchaseOrderController::class, 'returnPoNo']);
     Route::patch('purchase-reports/{id}/approve-item', [PurchaseReportController::class, 'approveItem']);
-    Route::post('/purchase-reports/{id}/po-approve-date', [PurchaseReportController::class, 'poApproveDate']);
+    Route::post('/purchase-reports/{id}/po-approve-date', [PurchaseOrderController::class, 'poApproveDate']);
     Route::patch('/purchase-reports/{id}/delivery-status', [PurchaseReportController::class, 'updateDeliveryStatus']);
 
+    Route::get('purchase-reports-clean', [PurchaseReportController::class, 'index']);
+    Route::get('purchase-reports-clean/{id}', [PurchaseReportController::class, 'showClean']);
     Route::prefix('purchase-reports')->group(function () {
         Route::get('{id}/progresses', [PurchaseReportProgressController::class, 'index']);
         Route::post('{id}/progresses', [PurchaseReportProgressController::class, 'store']);
         Route::put('progresses/{id}', [PurchaseReportProgressController::class, 'update']);
         Route::delete('progresses/{id}', [PurchaseReportProgressController::class, 'destroy']);
+        // Bulk approve/edit
+        Route::delete('{id}/items', [PurchaseReportController::class, 'removeRows']);
+        Route::patch('{id}/items/approve', [PurchaseReportController::class, 'approveEdits']);
     });
 
     Route::prefix('item-prices')->group(function () {
@@ -84,4 +99,33 @@ Route::withoutMiddleware([
     Route::apiResource('items', ItemController::class);
     Route::apiResource('vendors', VendorController::class);
     Route::apiResource('users', UserController::class);
+
+    // =====================
+    // Purchase Order (PO)
+    // =====================
+
+    // Whole-document PO (same PO for all items)
+    Route::patch(
+        'purchase-reports/{id}/po-no',
+        [PurchaseOrderController::class, 'updateDocumentPoNo']
+    );
+
+    // Per-item PO
+    Route::patch(
+        'purchase-reports/{id}/items/po-no',
+        [PurchaseOrderController::class, 'perItemPoNo']
+    );
+
+    // Whole-document PO approval date
+    Route::patch(
+        'purchase-reports/{id}/po-approve-date',
+        [PurchaseOrderController::class, 'documentPoApproveDate']
+    );
+
+    // Per-item PO approve
+    Route::patch(
+        'purchase-reports/{id}/items/po-approve-date',
+        [PurchaseOrderController::class, 'perItemPoApproveDate']
+    );
+
 });

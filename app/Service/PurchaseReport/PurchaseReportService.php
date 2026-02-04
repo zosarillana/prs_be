@@ -32,26 +32,8 @@ class PurchaseReportService implements TableQueryService
         // Eager load all user relationships that the mapper expects
         $query = PurchaseReport::with(['user', 'trUser', 'hodUser', 'purchaserUser']);
 
-        // 🔎 Search by fields including dates
-        // 🔎 Search by fields including dates and PO number
         if (! empty($filters['searchTerm'])) {
-            $search = $filters['searchTerm'];
-
-            $query->where(function ($q) use ($search) {
-                $q->where('series_no', 'like', "%{$search}%")
-                    ->orWhere('po_no', 'like', "%{$search}%")          // ✅ ADD THIS
-                    ->orWhere('pr_purpose', 'like', "%{$search}%")
-                    ->orWhere('department', 'like', "%{$search}%")
-                    ->orWhereHas('user', function ($q) use ($search) {
-                        $q->where('name', 'like', "%{$search}%")
-                            ->orWhere('email', 'like', "%{$search}%");
-                    })
-                    // ✅ Date search
-                    ->orWhereRaw(
-                        'DATE_FORMAT(created_at, "%Y-%m-%d") LIKE ?',
-                        ["%{$search}%"]
-                    );
-            });
+            $this->applyGlobalSearch($query, $filters['searchTerm']);
         }
 
         // ✅ PO Status filter (case-insensitive)
@@ -130,6 +112,163 @@ class PurchaseReportService implements TableQueryService
 
         return $query;
     }
+
+    protected function applyDynamicFilters(Builder $query, array $filters): void
+    {
+        foreach ($this->filterMap as $field => $type) {
+            if (! isset($filters[$field]) || $filters[$field] === '') {
+                continue;
+            }
+
+            $this->applyFilterByType($query, $field, $filters[$field], $type);
+        }
+    }
+
+    protected function applyFilterByType(
+        Builder $query,
+        string $field,
+        mixed $value,
+        string $type
+    ): void {
+        match ($type) {
+
+            // 🔍 string search
+            'like' => $query->where($field, 'LIKE', "%{$value}%"),
+
+            // 🎯 exact match
+            'equals' => $query->where($field, $value),
+
+            // 📌 multiple values
+            'in' => $query->whereIn(
+                $field,
+                is_array($value) ? $value : explode(',', $value)
+            ),
+
+            // 📅 date range
+            'date' => $this->applyDateFilter($query, $field, $value),
+
+            // 🧩 JSON contains value
+            'json_like' => $query->whereRaw(
+                "JSON_SEARCH($field, 'one', ?) IS NOT NULL",
+                ["%{$value}%"]
+            ),
+
+            // 🧩 JSON array contains enum
+            'json_in' => $this->applyJsonInFilter($query, $field, $value),
+
+            default => null,
+        };
+    }
+
+    protected function applyDateFilter(Builder $query, string $field, mixed $value): void
+    {
+        if (is_array($value) && isset($value['from'], $value['to'])) {
+            $query->whereBetween($field, [$value['from'], $value['to']]);
+        }
+    }
+
+    protected function applyJsonInFilter(
+        Builder $query,
+        string $field,
+        mixed $value
+    ): void {
+        $values = is_array($value) ? $value : explode(',', $value);
+
+        $query->where(function ($q) use ($field, $values) {
+            foreach ($values as $v) {
+                $q->orWhereRaw(
+                    "JSON_CONTAINS($field, JSON_QUOTE(?))",
+                    [$v]
+                );
+            }
+        });
+    }
+
+    protected function applyGlobalSearch(Builder $query, string $search): void
+    {
+        $query->where(function ($q) use ($search) {
+
+            /** --------------------
+             *  Normal columns
+             * -------------------- */
+            $q->orWhere('series_no', 'like', "%{$search}%")
+                ->orWhereRaw('CAST(sap_id AS CHAR) LIKE ?', ["%{$search}%"])
+                ->orWhereRaw('CAST(po_no AS CHAR) LIKE ?', ["%{$search}%"])
+
+                ->orWhere('po_status', 'like', "%{$search}%")
+                ->orWhere('pr_status', 'like', "%{$search}%")
+                ->orWhere('delivery_status', 'like', "%{$search}%")
+                ->orWhere('pr_purpose', 'like', "%{$search}%")
+                ->orWhere('department', 'like', "%{$search}%");
+
+            /** --------------------
+             *  Date columns (string match)
+             * -------------------- */
+            $q->orWhereRaw('DATE(created_at) LIKE ?', ["%{$search}%"])
+                ->orWhereRaw('DATE(date_submitted) LIKE ?', ["%{$search}%"])
+                ->orWhereRaw('DATE(date_needed) LIKE ?', ["%{$search}%"])
+                ->orWhereRaw('DATE(po_created_date) LIKE ?', ["%{$search}%"])
+                ->orWhereRaw('DATE(po_approved_date) LIKE ?', ["%{$search}%"]);
+
+            /** --------------------
+             *  Relationships
+             * -------------------- */
+            $q->orWhereHas('user', fn ($u) => $u->where('name', 'like', "%{$search}%")
+                ->orWhere('email', 'like', "%{$search}%")
+            );
+
+            $q->orWhereHas('trUser', fn ($u) => $u->where('name', 'like', "%{$search}%")
+            );
+
+            $q->orWhereHas('hodUser', fn ($u) => $u->where('name', 'like', "%{$search}%")
+            );
+
+            $q->orWhereHas('purchaserUser', fn ($u) => $u->where('name', 'like', "%{$search}%")
+            );
+
+            /** --------------------
+             *  JSON / array columns
+             * -------------------- */
+            $jsonColumns = [
+                'quantity',
+                'unit',
+                'item_description',
+                'tag',
+                'item_status',
+                'remarks',
+            ];
+
+            foreach ($jsonColumns as $column) {
+                $q->orWhereRaw(
+                    "JSON_SEARCH($column, 'all', ?) IS NOT NULL",
+                    ["%{$search}%"]
+                );
+            }
+        });
+    }
+
+    protected array $filterMap = [
+        // normal columns
+        'series_no' => 'like',
+        'po_no' => 'like',
+        'sap_id' => 'like',
+        'department' => 'like',
+        'po_status' => 'in',
+        'pr_status' => 'in',
+        'delivery_status' => 'equals',
+
+        // date columns
+        'created_at' => 'date',
+        'date_submitted' => 'date',
+        'date_needed' => 'date',
+        'po_created_date' => 'date',
+        'po_approved_date' => 'date',
+
+        // JSON columns
+        'item_status' => 'json_in',
+        'tag' => 'json_like',
+        'remarks' => 'json_like',
+    ];
 
     /**
      * Generate new Series No.
@@ -471,6 +610,56 @@ class PurchaseReportService implements TableQueryService
         return $report->delete();
     }
 
+    /** -----------------------------
+     *  For Item Row Processing
+     * ---------------------------- */
+    public function approveEdit(int $prId, int $index, array $itemData): PurchaseReport
+    {
+        $report = PurchaseReport::findOrFail($prId);
+
+        // Validate index exists in all arrays
+        $statuses = $report->item_status ?? [];
+        if (! array_key_exists($index, $statuses)) {
+            throw new \Exception('Invalid item index');
+        }
+
+        // ✅ Update all fields at the specified index
+        $quantities = $report->quantity ?? [];
+        $units = $report->unit ?? [];
+        $descriptions = $report->item_description ?? [];
+        $tags = $report->tag ?? [];
+        $remarks = $report->remarks ?? [];
+
+        // Update the specific index with new data
+        $quantities[$index] = $itemData['quantity'] ?? $quantities[$index];
+        $units[$index] = $itemData['unit'] ?? $units[$index];
+        $descriptions[$index] = $itemData['item_description'] ?? $descriptions[$index];
+        $tags[$index] = $itemData['tag'] ?? $tags[$index];
+        $remarks[$index] = $itemData['remarks'] ?? $remarks[$index];
+        $statuses[$index] = 'pending'; // Change status to pending
+
+        // Save all updates
+        $report->quantity = $quantities;
+        $report->unit = $units;
+        $report->item_description = $descriptions;
+        $report->tag = $tags;
+        $report->remarks = $remarks;
+        $report->item_status = $statuses;
+
+        // ✅ Only set pr_status to on_hold if there are NO other 'return' or 'returned' items
+        $hasReturnItems = collect($statuses)->contains(function ($status) {
+            return in_array($status, ['return', 'returned']);
+        });
+
+        if (! $hasReturnItems) {
+            $report->pr_status = 'on_hold';
+        }
+
+        $report->save();
+
+        return $report->fresh();
+    }
+
     public function removeItemRow(int $id, int $rowIndex): PurchaseReport
     {
         $report = PurchaseReport::findOrFail($id);
@@ -522,6 +711,132 @@ class PurchaseReportService implements TableQueryService
         } else {
             // All approved
             $report->pr_status = 'for_approval';
+        }
+
+        $report->save();
+
+        return $report->fresh();
+    }
+
+    public function addItem(int $id): PurchaseReport
+    {
+        $report = PurchaseReport::findOrFail($id);
+
+        // ✅ Use proper structure for tag (array with id and description)
+        $newRow = [
+            'quantity' => '1',
+            'unit' => '',
+            'item_description' => 'none',
+            'tag' => ['id' => null, 'description' => ''], // ✅ Proper structure instead of empty string
+            'remarks' => 'none',
+            'item_status' => 'return',
+        ];
+
+        $appendToArray = function (?array $array, $value) {
+            $array = $array ?? [];
+            $array[] = $value;
+
+            return $array;
+        };
+        $report->pr_status = 'on_hold_return';
+        $report->quantity = $appendToArray($report->quantity, $newRow['quantity']);
+        $report->unit = $appendToArray($report->unit, $newRow['unit']);
+        $report->item_description = $appendToArray($report->item_description, $newRow['item_description']);
+        $report->tag = $appendToArray($report->tag, $newRow['tag']); // ✅ Now adds proper structure
+        $report->remarks = $appendToArray($report->remarks, $newRow['remarks']);
+        $report->item_status = $appendToArray($report->item_status, $newRow['item_status']);
+
+        $report->save();
+
+        // 🔍 Debug: Check value BEFORE save
+        \Log::info('Before save:', ['item_status' => $report->item_status]);
+
+        $report->save();
+
+        // 🔍 Debug: Check value AFTER save
+        \Log::info('After save:', ['item_status' => $report->item_status]);
+
+        $fresh = $report->fresh();
+
+        // 🔍 Debug: Check value AFTER fresh
+        \Log::info('After fresh:', ['item_status' => $fresh->item_status]);
+
+        return $fresh;
+    }
+
+    public function removeItemRows(int $id, array $rowIndices): PurchaseReport
+    {
+        $report = PurchaseReport::findOrFail($id);
+
+        $removeIndices = function (?array $array) use ($rowIndices) {
+            if (! is_array($array)) {
+                return $array;
+            }
+
+            return array_values(array_filter($array, fn ($v, $k) => ! in_array($k, $rowIndices), ARRAY_FILTER_USE_BOTH));
+        };
+
+        $report->quantity = $removeIndices($report->quantity);
+        $report->unit = $removeIndices($report->unit);
+        $report->item_description = $removeIndices($report->item_description);
+        $report->tag = $removeIndices($report->tag);
+        $report->remarks = $removeIndices($report->remarks);
+        $report->item_status = $removeIndices($report->item_status);
+
+        // Recalculate PR status
+        $statuses = $report->item_status ?? [];
+        $totalItems = count($statuses);
+
+        if ($totalItems === 0) {
+            $report->pr_status = 'drafted';
+        } elseif (count(array_filter($statuses, fn ($s) => $s === 'rejected')) === $totalItems) {
+            $report->pr_status = 'rejected';
+        } elseif (in_array('pending_tr', $statuses, true)) {
+            $report->pr_status = 'on_hold_tr';
+        } elseif (in_array('pending', $statuses, true)) {
+            $report->pr_status = 'on_hold';
+        } else {
+            $report->pr_status = 'for_approval';
+        }
+
+        $report->save();
+
+        return $report->fresh();
+    }
+
+    public function approveEdits(int $prId, array $itemsData): PurchaseReport
+    {
+        $report = PurchaseReport::findOrFail($prId);
+
+        $quantities = $report->quantity ?? [];
+        $units = $report->unit ?? [];
+        $descriptions = $report->item_description ?? [];
+        $tags = $report->tag ?? [];
+        $remarks = $report->remarks ?? [];
+        $statuses = $report->item_status ?? [];
+
+        foreach ($itemsData as $index => $itemData) {
+            if (! array_key_exists($index, $statuses)) {
+                throw new \Exception("Invalid item index: $index");
+            }
+            $quantities[$index] = $itemData['quantity'] ?? $quantities[$index];
+            $units[$index] = $itemData['unit'] ?? $units[$index];
+            $descriptions[$index] = $itemData['item_description'] ?? $descriptions[$index];
+            $tags[$index] = $itemData['tag'] ?? $tags[$index];
+            $remarks[$index] = $itemData['remarks'] ?? $remarks[$index];
+            $statuses[$index] = 'pending';
+        }
+
+        $report->quantity = $quantities;
+        $report->unit = $units;
+        $report->item_description = $descriptions;
+        $report->tag = $tags;
+        $report->remarks = $remarks;
+        $report->item_status = $statuses;
+
+        $hasReturnItems = collect($statuses)->contains(fn ($status) => in_array($status, ['return', 'returned']));
+        if (! $hasReturnItems) {
+            $report->pr_status = 'on_hold';
         }
 
         $report->save();

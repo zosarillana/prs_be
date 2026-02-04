@@ -143,7 +143,18 @@ class ApprovalPrService
         return $report;
     }
 
-    // In ApprovalPrService.php
+    public function updateSapId(int $id, string $sapId, int $purchaserId)
+    {
+        $report = PurchaseReport::findOrFail($id);
+
+        $report->update([
+            'sap_id' => $sapId,
+            'purchaser_id' => $purchaserId,
+        ]);
+
+        return $report->fresh();
+    }
+
     public function cancelPoNo($id)
     {
         $report = PurchaseReport::findOrFail($id);
@@ -211,21 +222,21 @@ class ApprovalPrService
         return $report;
     }
 
-    public function poApproveDate($id, $status, $approvedDate, $purchaserId)
-    {
-        $report = PurchaseReport::findOrFail($id);
+    // public function poApproveDate($id, $status, $approvedDate, $purchaserId)
+    // {
+    //     $report = PurchaseReport::findOrFail($id);
 
-        $report->po_status = $status;
-        $report->po_approved_date = $approvedDate;
-        $report->purchaser_id = $purchaserId;
-        $report->save();
-        // ✅ Clear cache
-        $this->clearSummaryCaches();
-        $this->notify->notifyPoApproved($report);
-        event(new GlobalPurchaseReportApprovalUpdated($report, 'po_approved'));
+    //     $report->po_status = $status;
+    //     $report->po_approved_date = $approvedDate;
+    //     $report->purchaser_id = $purchaserId;
+    //     $report->save();
+    //     // ✅ Clear cache
+    //     $this->clearSummaryCaches();
+    //     $this->notify->notifyPoApproved($report);
+    //     event(new GlobalPurchaseReportApprovalUpdated($report, 'po_approved'));
 
-        return $report;
-    }
+    //     return $report;
+    // }
 
     protected function clearSummaryCaches(): void
     {

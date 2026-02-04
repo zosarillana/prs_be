@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Helpers\MapPurchaseReport;
+use App\Helpers\MapPurchaseReportClean;
 use App\Helpers\PrRoleFilters;
 use App\Helpers\QueryHelper;
 use App\Http\Requests\PurchaseReport\StorePurchaseReportRequest;
@@ -13,6 +14,7 @@ use App\Service\Paginator\PaginatorService;
 use App\Service\PurchaseReport\ApprovalPrService;
 use App\Service\PurchaseReport\PurchaseReportNotificationService;
 use App\Service\PurchaseReport\PurchaseReportService;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Notification;
@@ -47,6 +49,21 @@ class PurchaseReportController extends Controller
             ->toArray();
 
         return response()->json($result);
+    }
+
+    public function showClean(int $id)
+    {
+        $report = PurchaseReport::with([
+            'user',
+            'purchaserUser',
+            'trUser',
+            'hodUser',
+            'progresses',
+        ])->findOrFail($id);
+
+        return response()->json(
+            MapPurchaseReportClean::map($report)
+        );
     }
 
     /**
@@ -85,7 +102,8 @@ class PurchaseReportController extends Controller
         }
 
         $filtered = PrRoleFilters::applyRoleFilters(
-            $purchaseReportService->getQuery($queryParams),
+            $purchaseReportService->getQuery($queryParams)
+                ->with(['itemPos.purchaser']), // 👈 ADD THIS
             $user
         );
 
@@ -145,47 +163,6 @@ class PurchaseReportController extends Controller
             });
         }
 
-        // ✅ SEARCH TERM FILTER (MariaDB compatible)
-        if (! empty($queryParams['searchTerm'])) {
-            $term = '%'.strtolower($queryParams['searchTerm']).'%';
-
-            $filtered->where(function ($q) use ($term) {
-                $q->whereRaw('LOWER(series_no) LIKE ?', [$term])
-                    ->orWhereRaw('LOWER(pr_purpose) LIKE ?', [$term])
-                    ->orWhereRaw('LOWER(department) LIKE ?', [$term])
-                    // Search direct purchaser
-                    ->orWhereHas('purchaserUser', function ($subQ) use ($term) {
-                        $subQ->whereRaw('LOWER(name) LIKE ?', [$term]);
-                    })
-                    // Search resolved purchaser via tags (MariaDB compatible)
-                    ->orWhereExists(function ($subQ) use ($term) {
-                        $subQ->select(\DB::raw(1))
-                            ->from('user_privileges')
-                            ->join('users', 'users.id', '=', 'user_privileges.user_id')
-                            ->whereRaw('LOWER(users.name) LIKE ?', [$term])
-                            ->whereJsonLength('users.role', 1)
-                            ->whereJsonContains('users.role', 'purchasing')
-                            ->whereRaw("
-                            EXISTS (
-                                SELECT 1
-                                FROM (
-                                    SELECT 0 as idx UNION ALL SELECT 1 UNION ALL SELECT 2 UNION ALL 
-                                    SELECT 3 UNION ALL SELECT 4 UNION ALL SELECT 5 UNION ALL 
-                                    SELECT 6 UNION ALL SELECT 7 UNION ALL SELECT 8 UNION ALL 
-                                    SELECT 9 UNION ALL SELECT 10 UNION ALL SELECT 11 UNION ALL 
-                                    SELECT 12 UNION ALL SELECT 13 UNION ALL SELECT 14 UNION ALL SELECT 15
-                                ) indices
-                                WHERE JSON_EXTRACT(purchase_reports.tag, CONCAT('$[', indices.idx, '].id')) IS NOT NULL
-                                AND JSON_CONTAINS(
-                                    user_privileges.tag_ids,
-                                    JSON_EXTRACT(purchase_reports.tag, CONCAT('$[', indices.idx, '].id'))
-                                )
-                            )
-                        ");
-                    });
-            });
-        }
-
         // Sorting
         $filtered->reorder('id', 'desc');
 
@@ -208,55 +185,29 @@ class PurchaseReportController extends Controller
         return response()->json($result);
     }
 
-    public function tableReports(Request $request, PaginatorService $paginator, PurchaseReportService $purchaseReportService)
-    {
-        $result = QueryHelper::buildAndPaginate($request, $purchaseReportService, $paginator);
-
-        $queryParams = array_merge(
-            $result['query_params'] ?? [],
-            $request->only([
-                'searchTerm',
-                'statusTerm',
-                'prStatusTerm',
-                'po_no',
-                'submittedFrom',
-                'submittedTo',
-                'neededFrom',
-                'neededTo',
-                'fromDate',
-                'toDate',
-                'sortBy',
-                'sortOrder',
-                'completedTr',
-                'ownDepartment',
-            ])
+    public function tableReports(
+        Request $request,
+        PaginatorService $paginator,
+        PurchaseReportService $purchaseReportService
+    ) {
+        QueryHelper::buildAndPaginate(
+            $request,
+            $purchaseReportService,
+            $paginator
         );
 
-        if (empty($queryParams['sortBy'])) {
-            $queryParams['sortBy'] = 'id';
-            $queryParams['sortOrder'] = 'desc';
-        }
+        // ✅ ONE query, with eager loading
+        $query = $purchaseReportService->getQuery($request->all())
+            ->with(['itemPos.purchaser']);
 
-        // 🚫 No role filters applied
-        $filtered = $purchaseReportService->getQuery($queryParams);
-
-        // ✅ Simple date filtering
-        if (! empty($queryParams['fromDate'])) {
-            $filtered->whereRaw('DATE(created_at) >= ?', [$queryParams['fromDate']]);
-        }
-
-        if (! empty($queryParams['toDate'])) {
-            $filtered->whereRaw('DATE(created_at) <= ?', [$queryParams['toDate']]);
-        }
-
-        $filtered = $filtered->reorder('id', 'desc');
-
+        // ✅ Paginate
         $result = $paginator->paginate(
-            $filtered,
+            $query,
             $request->input('pageNumber', 1),
             $request->input('pageSize', 10)
         );
 
+        // ✅ Map results
         $result['items'] = collect($result['items'])
             ->map(fn ($r) => MapPurchaseReport::mapTable($r))
             ->toArray();
@@ -344,6 +295,29 @@ class PurchaseReportController extends Controller
         ]);
 
         return $this->purchaseReportService->update($id, $data);
+    }
+
+    /**
+     *Update item level.
+     */
+    public function approveEdit(Request $request, PurchaseReport $pr, int $index)
+    {
+        // ✅ Validate the incoming data
+        $validated = $request->validate([
+            'quantity' => 'nullable',
+            'unit' => 'nullable|string',
+            'item_description' => 'nullable|string',
+            'tag' => 'nullable',
+            'remarks' => 'nullable|string',
+        ]);
+
+        $report = $this->purchaseReportService->approveEdit(
+            $pr->id,
+            $index,
+            $validated  // ✅ Pass the validated data
+        );
+
+        return MapPurchaseReport::map($report);
     }
 
     /**
@@ -442,13 +416,16 @@ class PurchaseReportController extends Controller
             // Get main counts
             $result = $query->selectRaw("
             COUNT(*) as total,
+            COUNT(CASE WHEN pr_status = 'drafted' THEN 1 END) as drafted,
             COUNT(CASE WHEN pr_status = 'on_hold' THEN 1 END) as on_hold,
+            COUNT(CASE WHEN pr_status = 'on_hold_return' THEN 1 END) as on_hold_return,
             COUNT(CASE WHEN pr_status = 'for_approval' THEN 1 END) as for_approval,
             COUNT(CASE WHEN pr_status = 'on_hold_tr' THEN 1 END) as on_hold_tr,
             COUNT(CASE WHEN pr_status = 'closed' THEN 1 END) as closed_pr,
             COUNT(CASE WHEN pr_status = 'returned' THEN 1 END) as returned,
             COUNT(CASE WHEN pr_status = 'rejected' THEN 1 END) as rejected,
             COUNT(CASE WHEN po_status = 'for_approval' THEN 1 END) as for_ceo_approval,
+            COUNT(CASE WHEN po_status = 'partial_po' THEN 1 END) as partial_po,
             COUNT(CASE WHEN po_status = 'approved' THEN 1 END) as approved_po,
             COUNT(CASE WHEN hod_user_id IS NOT NULL THEN 1 END) as completed_hod_review,
             COUNT(CASE WHEN tr_user_id IS NOT NULL THEN 1 END) as completed_tr_review,
@@ -456,8 +433,11 @@ class PurchaseReportController extends Controller
         ", [$user->id])->first();
 
             $response = [
+                'drafted' => $result->drafted,
                 'on_hold' => $result->on_hold,
+                'on_hold_return' => $result->on_hold_return,
                 'for_approval' => $result->for_approval,
+                'partial_po' => $result->partial_po,
                 'on_hold_tr' => $result->on_hold_tr,
                 'closed_pr' => $result->closed_pr,
                 'for_ceo_approval' => $result->for_ceo_approval,
@@ -494,19 +474,19 @@ class PurchaseReportController extends Controller
         });
     }
 
-    public function updatePoNo(Request $request, $id)
+    public function updateSapId(Request $request, $id)
     {
-        // Validate PO number as a string (keep formatting)
+        // Validate SAP ID as a string
         $validated = $request->validate([
-            'po_no' => 'required|string',
+            'sap_id' => 'required|string',
         ]);
 
         $purchaserId = $request->user()->id;
 
-        // Update PO number and status via service
-        $report = $this->approvalPrService->updatePoNo(
+        // Update SAP ID via service
+        $report = $this->approvalPrService->updateSapId(
             $id,
-            $validated['po_no'],
+            $validated['sap_id'],
             $purchaserId
         );
 
@@ -520,107 +500,17 @@ class PurchaseReportController extends Controller
 
         // Send notifications
         Notification::send($recipients, new NewMessageNotification([
-            'title' => 'New PO Created',
+            'title' => 'SAP ID Assigned',
             'report_id' => $report->id,
             'series_no' => $report->series_no,
-            'po_no' => $report->po_no,
+            'sap_id' => $report->sap_id,
             'created_by' => $report->user->name ?? 'Unknown',
             'pr_status' => $report->pr_status,
             'po_status' => $report->po_status,
         ]));
 
         return response()->json([
-            'message' => 'PO number updated and status set to Closed',
-            'report' => $report,
-        ], 200);
-    }
-
-    public function cancelPoNo($id)
-    {
-        $report = $this->approvalPrService->cancelPoNo($id);
-
-        // Collect admin, purchasing, hod
-        $recipients = User::query()
-            ->whereJsonContains('role', 'admin')
-            ->orWhereJsonContains('role', 'purchasing')
-            ->orWhereJsonContains('role', 'hod')
-            ->get()
-            ->unique('id');
-
-        Notification::send($recipients, new NewMessageNotification([
-            'title' => 'PO Cancelled',
-            'report_id' => $report->id,
-            'series_no' => $report->series_no,
-            'po_no' => $report->po_no,
-            'created_by' => $report->user->name ?? 'Unknown',
-            'pr_status' => $report->pr_status,
-            'po_status' => $report->po_status,
-        ]));
-
-        return response()->json([
-            'message' => 'PO number cancelled successfully',
-            'report' => $report,
-        ], 200);
-    }
-
-    public function returnPoNo(Request $request, $id)
-    {
-        $report = $this->approvalPrService->returnPoNo($id);
-
-        // Collect admin, purchasing, hod
-        $recipients = User::query()
-            ->whereJsonContains('role', 'admin')
-            ->orWhereJsonContains('role', 'purchasing')
-            ->orWhereJsonContains('role', 'hod')
-            ->get()
-            ->unique('id');
-
-        Notification::send($recipients, new NewMessageNotification([
-            'title' => 'PO Returned',
-            'report_id' => $report->id,
-            'series_no' => $report->series_no, // important
-            'po_no' => $report->po_no,
-            'created_by' => $report->user->name ?? 'Unknown',
-            'pr_status' => $report->pr_status,
-            'po_status' => $report->po_status,
-        ]));
-
-        return response()->json([
-            'message' => 'PO number returned successfully',
-            'report' => $report,
-        ], 200);
-    }
-
-    public function poApproveDate(Request $request, $id)
-    {
-        $validated = $request->validate([
-            'date' => 'required|date',
-            'status' => 'required|string|in:approved,rejected,pending_tr,canceled,return',
-        ]);
-
-        $report = PurchaseReport::findOrFail($id);
-
-        // Parse both dates and normalize to start of day (00:00:00)
-        $poCreatedDate = \Carbon\Carbon::parse($report->po_created_date)->startOfDay();
-        $poApprovedDate = \Carbon\Carbon::parse($validated['date'])->startOfDay();
-
-        // ✅ Now compares only dates, not timestamps
-        if ($poApprovedDate->lt($poCreatedDate)) {
-            return response()->json([
-                'error' => 'Invalid date: PO Approved date cannot be earlier than PO Created date.',
-            ], 422);
-        }
-
-        // Service handles all the business logic
-        $report = $this->approvalPrService->poApproveDate(
-            $id,
-            $validated['status'],
-            $poApprovedDate,
-            auth()->id()
-        );
-
-        return response()->json([
-            'message' => 'PO approved successfully',
+            'message' => 'SAP ID updated successfully',
             'report' => $report,
         ], 200);
     }
@@ -651,6 +541,59 @@ class PurchaseReportController extends Controller
         $report = $this->purchaseReportService->removeItemRow(
             $id,
             $request->row_index
+        );
+
+        return response()->json($report);
+    }
+
+    public function addItem($id)
+    {
+        // Call service to add a new empty row
+        $report = $this->purchaseReportService->addItem($id);
+
+        return response()->json($report);
+    }
+
+    /** -----------------------------
+     *  For Item Row Controllers
+     * ---------------------------- */
+
+    /**
+     * Bulk remove item rows.
+     */
+    public function removeRows(Request $request, int $id): JsonResponse
+    {
+        $request->validate([
+            'row_indices' => 'required|array',
+            'row_indices.*' => 'integer|min:0',
+        ]);
+
+        $report = $this->purchaseReportService->removeItemRows(
+            $id,
+            $request->row_indices
+        );
+
+        return response()->json($report);
+    }
+
+    /**
+     * Bulk approve/edit items.
+     */
+    public function approveEdits(Request $request, int $id): JsonResponse
+    {
+        $request->validate([
+            'items_data' => 'required|array',
+            'items_data.*.index' => 'required|integer|min:0',
+            'items_data.*.quantity' => 'nullable',
+            'items_data.*.unit' => 'nullable',
+            'items_data.*.item_description' => 'nullable',
+            'items_data.*.tag' => 'nullable',
+            'items_data.*.remarks' => 'nullable',
+        ]);
+
+        $report = $this->purchaseReportService->approveEdits(
+            $id,
+            $request->items_data
         );
 
         return response()->json($report);

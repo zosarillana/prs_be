@@ -12,6 +12,7 @@ class PurchaseReport extends Model
     protected $fillable = [
         'user_id',
         'series_no',
+        'sap_id',
         'po_no',
         'po_status',
         'po_created_date',
@@ -105,5 +106,10 @@ class PurchaseReport extends Model
     public function progresses()
     {
         return $this->hasMany(PurchaseReportProgress::class);
+    }
+
+    public function itemPos()
+    {
+        return $this->hasMany(PurchaseReportItemPo::class);
     }
 }

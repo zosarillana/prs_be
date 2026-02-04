@@ -13,6 +13,7 @@ class MapPurchaseReport
         return [
             'id' => $report->id,
             'series_no' => $report->series_no,
+            'sap_id' => $report->sap_id,
             'pr_purpose' => $report->pr_purpose,
             'purchaser_id' => self::mapPurchaser($report),
             'department' => $report->department,
@@ -25,6 +26,9 @@ class MapPurchaseReport
 
             // ✅ Updated: normalize tags to ensure consistent array structure
             'tag' => self::mapTags($report->tag),
+
+            'item_pos' => self::mapItemPos($report->itemPos),
+            
             'item_status' => $report->item_status,
             'remarks' => $report->remarks,
             'user' => $report->user ? self::mapUser($report->user) : null,
@@ -61,10 +65,13 @@ class MapPurchaseReport
             // ✅ Updated: handle structured tag arrays
             'tag' => self::mapTags($report->tag),
 
+            'item_pos' => self::mapItemPos($report->itemPos),
+
             'pr_created' => $report->created_at ? $report->created_at->format('Y-m-d') : null,
             'pr_status' => $report->pr_status,
             'pr_purpose' => $report->pr_purpose,
             'series_no' => $report->series_no,
+            'sap_id' => $report->sap_id,
             'hod_signed_at' => $report->hod_signed_at ? $report->hod_signed_at->format('Y-m-d') : null,
             'tr_signed_at' => $report->tr_signed_at ? $report->tr_signed_at->format('Y-m-d') : null,
             'date_created' => $report->created_at ? $report->created_at->format('Y-m-d') : null,
@@ -96,21 +103,32 @@ class MapPurchaseReport
             return [];
         }
 
-        // If already structured (id + description), return as-is
-        if (is_array($tags) && isset($tags[0]['id'])) {
-            return array_map(fn ($tag) => [
-                'id' => $tag['id'],
-                'description' => $tag['description'] ?? null,
-                'department' => $tag['department'] ?? null,
-            ], $tags);
-        }
+        return array_map(function ($tag) {
+            // ✅ Handle empty string case
+            if (empty($tag) || $tag === '') {
+                return [
+                    'id' => null,
+                    'description' => '',
+                    'department' => null,
+                ];
+            }
 
-        // Legacy fallback: convert ["Engineering_tr"] → [{"id"=>null,"description"=>"Engineering_tr"}]
-        return array_map(fn ($tag) => [
-            'id' => null,
-            'description' => is_string($tag) ? $tag : null,
-            'department' => null,
-        ], (array) $tags);
+            // If already structured (id + description), return as-is
+            if (is_array($tag) && isset($tag['id'])) {
+                return [
+                    'id' => $tag['id'],
+                    'description' => $tag['description'] ?? '',
+                    'department' => $tag['department'] ?? null,
+                ];
+            }
+
+            // Legacy fallback: convert string to structure
+            return [
+                'id' => null,
+                'description' => is_string($tag) ? $tag : '',
+                'department' => null,
+            ];
+        }, (array) $tags);
     }
 
     protected static function resolvePurchaser(PurchaseReport $report): ?array
@@ -148,7 +166,7 @@ class MapPurchaseReport
 
         return self::mapUser($privilege->user);
     }
-    
+
     protected static function mapPurchaser(PurchaseReport $report): ?array
     {
         if ($report->purchaserUser) {
@@ -162,5 +180,35 @@ class MapPurchaseReport
 
         // ❌ Otherwise (multiple roles OR no purchaser) → resolve dynamically
         return self::resolvePurchaser($report);
+    }
+
+    /**
+     * ✅ Normalize per-item PO data
+     * Handles empty, unloaded, or partial relations safely
+     */
+    protected static function mapItemPos($itemPos): array
+    {
+        if (empty($itemPos)) {
+            return [];
+        }
+
+        return collect($itemPos)->map(function ($itemPo) {
+            return [
+                'id' => $itemPo->id ?? null,
+                'item_index' => $itemPo->item_index ?? null,
+                'po_number' => $itemPo->po_number ?? null,
+                'status' => $itemPo->status ?? null,
+                'po_created_at' => $itemPo->po_created_at
+                    ? $itemPo->po_created_at->format('Y-m-d')
+                    : null,
+                'po_approved_at' => $itemPo->po_approved_at
+                    ? $itemPo->po_approved_at->format('Y-m-d')
+                    : null,
+
+                'purchaser' => $itemPo->purchaser
+                    ? self::mapUser($itemPo->purchaser)
+                    : null,
+            ];
+        })->values()->toArray();
     }
 }
