@@ -241,7 +241,7 @@ class ApprovalPrService
     protected function clearSummaryCaches(): void
     {
         // Clear all summary caches (since multiple users might be affected)
-        Cache::flush(); // Or use a more targeted approach if needed
+        // Cache::flush(); // Or use a more targeted approach if needed
 
         // Or if you want to be more specific:
         // $pattern = 'summary_counts_*';

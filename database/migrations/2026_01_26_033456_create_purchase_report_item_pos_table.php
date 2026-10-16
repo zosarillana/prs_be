@@ -7,33 +7,34 @@ use Illuminate\Support\Facades\Schema;
 return new class extends Migration {
     public function up(): void
     {
-        Schema::create('purchase_report_item_pos', function (Blueprint $table) {
-            $table->id();
+        if (!Schema::hasTable('purchase_report_item_pos')) {
+            Schema::create('purchase_report_item_pos', function (Blueprint $table) {
+                $table->id();
 
-            // Link to purchase report
-            $table->foreignId('purchase_report_id')
-                  ->constrained()
-                  ->cascadeOnDelete();
+                $table->foreignId('purchase_report_id')
+                      ->constrained()
+                      ->cascadeOnDelete();
 
-            // Index of the item in the PR JSON arrays
-            $table->unsignedInteger('item_index');
+                $table->unsignedInteger('item_index');
 
-            // PO info
-            $table->string('po_number')->nullable();
-            $table->foreignId('purchaser_id')
-                  ->nullable()
-                  ->constrained('users')
-                  ->nullOnDelete();
-            $table->enum('status', ['created', 'approved', 'cancelled'])->default('created');
+                $table->string('po_number')->nullable();
 
-            $table->timestamp('po_created_at')->nullable();
-            $table->timestamp('po_approved_at')->nullable();
+                $table->foreignId('purchaser_id')
+                      ->nullable()
+                      ->constrained('users')
+                      ->nullOnDelete();
 
-            $table->timestamps();
+                $table->enum('status', ['created', 'approved', 'cancelled'])
+                      ->default('created');
 
-            // Prevent duplicate PO for same item
-            $table->unique(['purchase_report_id', 'item_index']);
-        });
+                $table->timestamp('po_created_at')->nullable();
+                $table->timestamp('po_approved_at')->nullable();
+
+                $table->timestamps();
+
+                $table->unique(['purchase_report_id', 'item_index']);
+            });
+        }
     }
 
     public function down(): void
@@ -41,3 +42,4 @@ return new class extends Migration {
         Schema::dropIfExists('purchase_report_item_pos');
     }
 };
+

@@ -158,4 +158,19 @@ class AuthController extends Controller
             'user' => $request->user()->only(['id', 'name', 'email', 'department', 'role']),
         ]);
     }
+
+    public function refresh(Request $request)
+    {
+        $user = $request->user();
+
+        // Optional: delete old tokens if you want
+        // $user->tokens()->delete();
+
+        $token = $user->createToken('auth_token')->plainTextToken;
+
+        return response()->json([
+            'access_token' => $token,
+            'token_type' => 'Bearer',
+        ]);
+    }
 }

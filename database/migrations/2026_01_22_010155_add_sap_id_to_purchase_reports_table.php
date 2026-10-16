@@ -12,7 +12,9 @@ return new class extends Migration
     public function up(): void
     {
         Schema::table('purchase_reports', function (Blueprint $table) {
-            $table->string('sap_id')->nullable()->after('series_no');
+            if (! Schema::hasColumn('purchase_reports', 'sap_id')) {
+                $table->string('sap_id')->nullable()->after('series_no');
+            }
         });
     }
 
@@ -22,7 +24,9 @@ return new class extends Migration
     public function down(): void
     {
         Schema::table('purchase_reports', function (Blueprint $table) {
-            $table->dropColumn('sap_id');
+            if (Schema::hasColumn('purchase_reports', 'sap_id')) {
+                $table->dropColumn('sap_id');
+            }
         });
     }
 };

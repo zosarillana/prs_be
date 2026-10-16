@@ -464,7 +464,7 @@ class PurchaseOrderController extends Controller
     {
         $validated = $request->validate([
             'date' => 'required|date',
-            'status' => 'required|string|in:approved,cancelled',
+            'status' => 'required|string|in:approved,canceled',
         ]);
 
         $report = PurchaseReport::findOrFail($reportId);

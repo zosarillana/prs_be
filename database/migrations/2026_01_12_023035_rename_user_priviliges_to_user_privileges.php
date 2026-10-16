@@ -3,21 +3,24 @@
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Support\Facades\Schema;
 
-return new class extends Migration
-{
-    /**
-     * Run the migrations.
-     */
+return new class extends Migration {
     public function up()
     {
-        Schema::rename('user_priviliges', 'user_privileges');
+        if (
+            Schema::hasTable('user_priviliges') &&
+            !Schema::hasTable('user_privileges')
+        ) {
+            Schema::rename('user_priviliges', 'user_privileges');
+        }
     }
 
-    /**
-     * Reverse the migrations.
-     */
     public function down()
     {
-        Schema::rename('user_privileges', 'user_priviliges');
+        if (
+            Schema::hasTable('user_privileges') &&
+            !Schema::hasTable('user_priviliges')
+        ) {
+            Schema::rename('user_privileges', 'user_priviliges');
+        }
     }
 };

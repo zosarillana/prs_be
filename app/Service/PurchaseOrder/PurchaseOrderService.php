@@ -87,25 +87,28 @@ class PurchaseOrderService
         int $purchaserId
     ): PurchaseReport {
 
-        // ✅ Update all item-level PO rows
-        $report->itemPos()->update([
-            'status' => $status,
-            'po_approved_at' => $approvedDate,
-            'purchaser_id' => $purchaserId,
-        ]);
+        // ✅ Update item-level PO rows ONLY if they exist
+        if ($report->itemPos()->exists()) {
+            $report->itemPos()->update([
+                'status' => $status,
+                'po_approved_at' => $approvedDate,
+                'purchaser_id' => $purchaserId,
+            ]);
+        }
 
-        // ✅ Update document-level summary fields (legacy support)
+        // ✅ ALWAYS update document-level fields
         $report->update([
             'po_status' => $status,
             'po_approved_date' => $approvedDate,
             'purchaser_id' => $purchaserId,
         ]);
 
-        // 🔁 Recalculate derived status in case of mixed states later
-        $this->syncApprovalSummary($report);
+        // ✅ ONLY sync if itemPos exists (prevents overwrite bug)
+        if ($report->itemPos()->exists()) {
+            $this->syncApprovalSummary($report);
+        }
 
-        // 🔔 Same side effects as your old service
-        // $this->clearSummaryCaches();
+        // 🔔 Notifications / events (unchanged)
         $this->notify->notifyPoApproved($report);
         event(new GlobalPurchaseReportApprovalUpdated($report, 'po_approved'));
 

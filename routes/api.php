@@ -16,6 +16,7 @@ use App\Http\Controllers\UserController;
 use App\Http\Controllers\UserLogsController;
 use App\Http\Controllers\UserPriviligesController;
 use App\Http\Controllers\VendorController;
+use App\Http\Controllers\VendorPaymentController;
 use Illuminate\Support\Facades\Route;
 
 Route::withoutMiddleware([
@@ -53,52 +54,8 @@ Route::withoutMiddleware([
     Route::patch('purchase-reports/{id}/cancel-po-no', [PurchaseOrderController::class, 'cancelPoNo']);
     Route::patch('purchase-reports/{id}/return-po-no', [PurchaseOrderController::class, 'returnPoNo']);
     Route::patch('purchase-reports/{id}/approve-item', [PurchaseReportController::class, 'approveItem']);
-    Route::post('/purchase-reports/{id}/po-approve-date', [PurchaseOrderController::class, 'poApproveDate']);
+    // Route::post('/purchase-reports/{id}/po-approve-date', [PurchaseOrderController::class, 'poApproveDate']);
     Route::patch('/purchase-reports/{id}/delivery-status', [PurchaseReportController::class, 'updateDeliveryStatus']);
-
-    Route::get('purchase-reports-clean', [PurchaseReportController::class, 'index']);
-    Route::get('purchase-reports-clean/{id}', [PurchaseReportController::class, 'showClean']);
-    Route::prefix('purchase-reports')->group(function () {
-        Route::get('{id}/progresses', [PurchaseReportProgressController::class, 'index']);
-        Route::post('{id}/progresses', [PurchaseReportProgressController::class, 'store']);
-        Route::put('progresses/{id}', [PurchaseReportProgressController::class, 'update']);
-        Route::delete('progresses/{id}', [PurchaseReportProgressController::class, 'destroy']);
-        // Bulk approve/edit
-        Route::delete('{id}/items', [PurchaseReportController::class, 'removeRows']);
-        Route::patch('{id}/items/approve', [PurchaseReportController::class, 'approveEdits']);
-    });
-
-    Route::prefix('item-prices')->group(function () {
-        Route::get('/', [ItemPriceController::class, 'table']);   // Read (list)
-        Route::post('/', [ItemPriceController::class, 'store']);  // Create
-        Route::get('{id}', [ItemPriceController::class, 'show']); // Read (single)
-        Route::put('{id}', [ItemPriceController::class, 'update']); // Update
-        Route::delete('{id}', [ItemPriceController::class, 'destroy']); // Delete
-    });
-
-    Route::apiResource('modules', ModulesController::class);
-    Route::apiResource('user-privileges', UserPriviligesController::class);
-    Route::apiResource('departments', DepartmentController::class);
-    Route::apiResource('tags', TagsController::class);
-
-    Route::apiResource('purchase-reports', PurchaseReportController::class)
-        ->parameters(['purchase-reports' => 'id']);
-
-    Route::apiResource('uoms', UomController::class)
-        ->parameters(['uoms' => 'id']);
-
-    Route::get('/notifications', [NotificationController::class, 'index']);
-    Route::get('/notifications/counts', [NotificationController::class, 'counts']);
-    Route::get('/notifications/summary', [NotificationController::class, 'summary']);
-    Route::post('/notifications/{id}/read', [NotificationController::class, 'markAsRead']);
-    Route::post('/notifications/read-all', [NotificationController::class, 'markAllAsRead']);
-
-    Route::post('users/{id}/signature', [UserController::class, 'updateSignature']);
-    Route::put('users/{id}/password', [UserController::class, 'updatePassword']);
-
-    Route::apiResource('items', ItemController::class);
-    Route::apiResource('vendors', VendorController::class);
-    Route::apiResource('users', UserController::class);
 
     // =====================
     // Purchase Order (PO)
@@ -127,5 +84,56 @@ Route::withoutMiddleware([
         'purchase-reports/{id}/items/po-approve-date',
         [PurchaseOrderController::class, 'perItemPoApproveDate']
     );
+    // end
+
+    Route::get('purchase-reports-clean', [PurchaseReportController::class, 'index']);
+    Route::get('purchase-reports-clean/{id}', [PurchaseReportController::class, 'showClean']);
+    Route::prefix('purchase-reports')->group(function () {
+        Route::get('{id}/progresses', [PurchaseReportProgressController::class, 'index']);
+        Route::post('{id}/progresses', [PurchaseReportProgressController::class, 'store']);
+        Route::put('progresses/{id}', [PurchaseReportProgressController::class, 'update']);
+        Route::delete('progresses/{id}', [PurchaseReportProgressController::class, 'destroy']);
+        // Bulk approve/edit
+        Route::delete('{id}/items', [PurchaseReportController::class, 'removeRows']);
+        Route::patch('{id}/items/approve', [PurchaseReportController::class, 'approveEdits']);
+    });
+
+    Route::prefix('item-prices')->group(function () {
+        Route::get('/', [ItemPriceController::class, 'table']);   // Read (list)
+        Route::post('/', [ItemPriceController::class, 'store']);  // Create
+        Route::get('{id}', [ItemPriceController::class, 'show']); // Read (single)
+        Route::put('{id}', [ItemPriceController::class, 'update']); // Update
+        Route::delete('{id}', [ItemPriceController::class, 'destroy']); // Delete
+    });
+
+    Route::get('/notifications', [NotificationController::class, 'index']);
+    Route::get('/notifications/counts', [NotificationController::class, 'counts']);
+    Route::get('/notifications/summary', [NotificationController::class, 'summary']);
+    Route::post('/notifications/{id}/read', [NotificationController::class, 'markAsRead']);
+    Route::post('/notifications/read-all', [NotificationController::class, 'markAllAsRead']);
+
+    Route::post('users/{id}/signature', [UserController::class, 'updateSignature']);
+    Route::put('users/{id}/password', [UserController::class, 'updatePassword']);
+    
+    // Serve a vendor payment (set date_served and close cheque)
+    Route::post('vendor-payments/{id}/serve', [VendorPaymentController::class, 'serve']);
+    
+    Route::apiResource('items', ItemController::class);
+    Route::apiResource('vendors', VendorController::class);
+    Route::apiResource('users', UserController::class);
+
+    Route::apiResource('modules', ModulesController::class);
+    Route::apiResource('user-privileges', UserPriviligesController::class);
+    Route::apiResource('departments', DepartmentController::class);
+    Route::apiResource('tags', TagsController::class);
+
+    Route::apiResource('purchase-reports', PurchaseReportController::class)
+        ->parameters(['purchase-reports' => 'id']);
+
+    Route::apiResource('uoms', UomController::class)
+        ->parameters(['uoms' => 'id']);
+    // api.php
+    Route::apiResource('vendor-payments', VendorPaymentController::class)
+        ->parameters(['vendor-payments' => 'id']); // ✅ match what your controller expects
 
 });
