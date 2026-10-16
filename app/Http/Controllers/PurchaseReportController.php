@@ -9,6 +9,7 @@ use App\Helpers\QueryHelper;
 use App\Http\Requests\PurchaseReport\StorePurchaseReportRequest;
 use App\Models\PurchaseReport;
 use App\Models\User;
+use App\Models\VendorPayment;
 use App\Notifications\NewMessageNotification;
 use App\Service\Paginator\PaginatorService;
 use App\Service\PurchaseReport\ApprovalPrService;
@@ -406,6 +407,12 @@ class PurchaseReportController extends Controller
 
         return Cache::remember($cacheKey, 60, function () use ($user, $roles) {
 
+            /*
+            |--------------------------------------------------------------------------
+            | PURCHASE REPORT COUNTS
+            |--------------------------------------------------------------------------
+            */
+
             // Use fast counting method for non-admin users
             if (in_array('admin', $roles) || in_array('purchasing', $roles)) {
                 $query = PurchaseReport::query(); // No filters for admin
@@ -413,7 +420,6 @@ class PurchaseReportController extends Controller
                 $query = PrRoleFilters::applyRoleFilters(PurchaseReport::query(), $user);
             }
 
-            // Get main counts
             $result = $query->selectRaw("
             COUNT(*) as total,
             COUNT(CASE WHEN pr_status = 'drafted' THEN 1 END) as drafted,
@@ -451,7 +457,12 @@ class PurchaseReportController extends Controller
                 'completed_tr' => $result->completed_tr_review,
             ];
 
-            // Add department total for ALL users with departments
+            /*
+            |--------------------------------------------------------------------------
+            | DEPARTMENT TOTAL (PurchaseReport)
+            |--------------------------------------------------------------------------
+            */
+
             if (! empty($user->department)) {
                 $deptValues = collect($user->department)->flatMap(function ($dept) {
                     $slug = preg_replace('/[^A-Za-z0-9_.-]/', '_', $dept);
@@ -459,19 +470,25 @@ class PurchaseReportController extends Controller
                     return [$dept, $slug];
                 })->all();
 
-                // For admins, count all PRs in their departments (column + tags)
                 if (in_array('admin', $roles) || in_array('purchasing', $roles)) {
                     $response['department_total'] = PurchaseReport::whereIn('department', $deptValues)->count();
                 } else {
-                    // For non-admins, use the SAME filter as the main query
-                    // This ensures department_total matches the same filtering logic
                     $deptQuery = PrRoleFilters::applyRoleFilters(PurchaseReport::query(), $user);
                     $response['department_total'] = $deptQuery->count();
                 }
             }
 
+            /*
+|--------------------------------------------------------------------------
+| VENDOR PAYMENT TOTAL (NO FILTERS, ALWAYS GLOBAL COUNT)
+|--------------------------------------------------------------------------
+*/
+
+            $response['total_vendor_payments'] = VendorPayment::count();
+
             return $response;
         });
+
     }
 
     public function updateSapId(Request $request, $id)

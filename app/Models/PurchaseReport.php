@@ -8,7 +8,6 @@ use Illuminate\Database\Eloquent\Model;
 class PurchaseReport extends Model
 {
     use HasFactory;
-
     protected $fillable = [
         'user_id',
         'series_no',
@@ -27,8 +26,9 @@ class PurchaseReport extends Model
         'item_description',
         'tag',
         'item_status',
-        'pr_status',
+        'int_ord_no', // ADD THIS
         'remarks',
+        'pr_status',
         'tr_user_id',
         'hod_user_id',
         'tr_signed_at',
@@ -45,6 +45,7 @@ class PurchaseReport extends Model
         'item_description' => 'array',
         'tag' => 'array',
         'item_status' => 'array',
+        'int_ord_no' => 'array', // ADD THIS
         'remarks' => 'array',
         'date_submitted' => 'datetime:Y-m-d',
         'date_needed' => 'datetime:Y-m-d',
@@ -53,6 +54,7 @@ class PurchaseReport extends Model
         'po_created_date' => 'datetime',
         'po_approved_date' => 'datetime',
     ];
+
 
     public function user()
     {

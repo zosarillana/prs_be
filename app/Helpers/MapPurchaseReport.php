@@ -28,7 +28,6 @@ class MapPurchaseReport
             'tag' => self::mapTags($report->tag),
 
             'item_pos' => self::mapItemPos($report->itemPos),
-
             'item_status' => $report->item_status,
             'remarks' => $report->remarks,
             'user' => $report->user ? self::mapUser($report->user) : null,

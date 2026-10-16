@@ -13,7 +13,8 @@ Route::middleware('auth:sanctum')->group(function () {
     // ====== 🔹 Authentication Routes ======
     Route::post('/change-password', [AuthController::class, 'changePassword']); // 🆕 User self password change
     // ======================================
-
+    // 🆕 Refresh token
+    Route::post('/refresh', [AuthController::class, 'refresh']);
 });
 
 Route::get('/files/signatures/{filename}', function ($filename) {
