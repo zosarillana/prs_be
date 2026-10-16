@@ -30,7 +30,7 @@ class PurchaseReportNotificationService
         });
 
         // Only restrict dept for NON-admin roles
-        if ($department && !in_array('admin', $roles)) {
+        if ($department && ! in_array('admin', $roles)) {
             $query->whereJsonContains('department', $department);
         }
 
@@ -56,19 +56,21 @@ class PurchaseReportNotificationService
                     ->where('data->title', $title)
                     ->exists();
 
-                if ($exists) return;
+                if ($exists) {
+                    return;
+                }
 
                 $user->notify(new NewMessageNotification([
-                    'title'      => $title,
-                    'report_id'  => $report->id,
-                    'series_no'  => $report->series_no ?? null,
-                    'po_no'      => $report->po_no ?? null,
+                    'title' => $title,
+                    'report_id' => $report->id,
+                    'series_no' => $report->series_no ?? null,
+                    'po_no' => $report->po_no ?? null,
                     'created_by' => $report->user->name ?? 'Unknown',
-                    'pr_status'  => $report->pr_status,
-                    'po_status'  => $report->po_status,
-                    'user_id'    => $user->id,
+                    'pr_status' => $report->pr_status,
+                    'po_status' => $report->po_status,
+                    'user_id' => $user->id,
                     'department' => $user->department,
-                    'role'       => $overrideRole ?? $user->role,
+                    'role' => $overrideRole ?? $user->role,
                 ]));
             });
     }
@@ -76,13 +78,12 @@ class PurchaseReportNotificationService
     /** -----------------------------
      *  CREATION EVENTS
      * ---------------------------- */
-
     public function notifyOnCreated(PurchaseReport $report): void
     {
         // Admin + Purchasing get all reports
-        $admins      = $this->getUsersByRoles(['admin']);
-        $purchasing  = $this->getUsersByRoles(['purchasing']);
-        $hodTrUsers  = $this->getUsersByRoles(['hod', 'technical_reviewer'], $report->department);
+        $admins = $this->getUsersByRoles(['admin']);
+        $purchasing = $this->getUsersByRoles(['purchasing']);
+        $hodTrUsers = $this->getUsersByRoles(['hod', 'technical_reviewer'], $report->department);
 
         $recipients = $admins->merge($purchasing)->merge($hodTrUsers);
 
@@ -103,7 +104,6 @@ class PurchaseReportNotificationService
     /** -----------------------------
      *  PURCHASE APPROVAL
      * ---------------------------- */
-
     public function notifyPurchasingForApproval(PurchaseReport $report): void
     {
         // Notify Admins (global)
@@ -150,7 +150,6 @@ class PurchaseReportNotificationService
     /** -----------------------------
      *  PO CREATED/RETURNED/APPROVED
      * ---------------------------- */
-
     public function notifyPoCreated(PurchaseReport $report): void
     {
         $this->notifyAdminPurchasingHod($report, 'New PO Created');
@@ -193,7 +192,6 @@ class PurchaseReportNotificationService
     /** -----------------------------
      *  TECHNICAL REVIEW
      * ---------------------------- */
-
     public function notifyTechnicalOnHold(PurchaseReport $report): void
     {
         $this->notifyMany(
@@ -231,9 +229,29 @@ class PurchaseReportNotificationService
     }
 
     /** -----------------------------
+     *  Return
+     * ---------------------------- */
+    public function notifyReturned(PurchaseReport $report): void
+    {
+        $title = 'Purchase Request Returned';
+
+        $this->notifyAdminPurchasingHod($report, $title);
+
+        if ($report->user) {
+            $this->notifyMany(collect([$report->user]), $report, $title);
+        }
+
+        $this->notifyMany(
+            $this->getUsersByRoles(['user'], $report->department),
+            $report,
+            'PO Approved'
+        );
+
+    }
+
+    /** -----------------------------
      *  REJECTED
      * ---------------------------- */
-
     public function notifyRejected(PurchaseReport $report): void
     {
         $title = 'Purchase Request Rejected';
@@ -254,19 +272,18 @@ class PurchaseReportNotificationService
     /** -----------------------------
      *  DELIVERY STATUS CHANGED
      * ---------------------------- */
-
     public function notifyDeliveryStatusUpdated(PurchaseReport $report): void
     {
         $title = match ($report->delivery_status) {
             'delivered' => 'Purchase Order Delivered',
-            'partial'   => 'Purchase Order Partially Delivered',
-            'pending'   => 'Delivery Status Changed to Pending',
-            default     => 'Delivery Status Updated',
+            'partial' => 'Purchase Order Partially Delivered',
+            'pending' => 'Delivery Status Changed to Pending',
+            default => 'Delivery Status Updated',
         };
 
-        $admin      = $this->getUsersByRoles(['admin']);
+        $admin = $this->getUsersByRoles(['admin']);
         $purchasing = $this->getUsersByRoles(['purchasing']);
-        $hod        = $this->getUsersByRoles(['hod'], $report->department);
+        $hod = $this->getUsersByRoles(['hod'], $report->department);
 
         $this->notifyMany($admin->merge($purchasing)->merge($hod), $report, $title);
 
@@ -279,9 +296,7 @@ class PurchaseReportNotificationService
 
     /** -----------------------------
      *  HELPER – ADMINS + PURCHASING + HOD
-     * ---------------------------- */
-
-    protected function notifyAdminPurchasingHod(PurchaseReport $report, string $title): void
+     * ---------------------------- */    protected function notifyAdminPurchasingHod(PurchaseReport $report, string $title): void
     {
         $recipients = collect()
             ->merge($this->getUsersByRoles(['admin']))

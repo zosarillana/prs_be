@@ -16,33 +16,43 @@ class ItemExim implements ToCollection, WithHeadingRow
     public function collection(Collection $rows)
     {
         DB::transaction(function () use ($rows) {
+
             foreach ($rows as $row) {
 
-                // DEBUG: log each row
-                Log::info($row->toArray());
+                $itemName   = strtoupper(trim(preg_replace('/\s+/', ' ', $row['item_description'] ?? '')));
+                $vendorName = strtoupper(trim(preg_replace('/\s+/', ' ', $row['suppliervendor'] ?? '')));
+                $priceRaw   = trim($row['unit_price'] ?? '');
 
-                // Skip incomplete rows
-                if (empty($row['item_description']) || empty($row['suppliervendor']) || empty($row['unit_price'])) {
+                if ($itemName === '' || $vendorName === '' || $priceRaw === '') {
                     continue;
                 }
 
+                $price = (float) str_replace(',', '', $priceRaw);
+
                 $item = Item::firstOrCreate([
-                    'item_name' => trim($row['item_description']),
+                    'item_name' => $itemName,
                 ]);
 
                 $vendor = Vendor::firstOrCreate([
-                    'vendor_name' => trim($row['suppliervendor']),
+                    'vendor_name' => $vendorName,
                 ]);
 
-                ItemPrice::firstOrCreate(
-                    [
-                        'item_id' => $item->id,
-                        'vendor_id' => $vendor->id,
-                    ],
-                    [
-                        'unit_price' => (float) str_replace(',', '', $row['unit_price']),
-                    ]
-                );
+                // ✅ skip ONLY exact duplicates
+                $exists = ItemPrice::where([
+                    'item_id'    => $item->id,
+                    'vendor_id'  => $vendor->id,
+                    'unit_price' => $price,
+                ])->exists();
+
+                if ($exists) {
+                    continue;
+                }
+
+                ItemPrice::create([
+                    'item_id'    => $item->id,
+                    'vendor_id'  => $vendor->id,
+                    'unit_price' => $price,
+                ]);
             }
         });
     }

@@ -51,18 +51,24 @@ class UserPriviligesController extends Controller
             $filters['limit'] = (int) $request->input('limit');
         }
 
+        // Filter by user role
+        if ($request->has('role')) {
+            $filters['role'] = $request->input('role');
+        }
+
         return response()->json($this->service->getAll($filters));
     }
 
     public function store(Request $request)
     {
         $validated = $request->validate([
-            'user_id'    => 'required|exists:users,id',
-            'tag_ids'    => 'nullable|array',
+            'user_id' => 'required|exists:users,id',
+            'tag_ids' => 'nullable|array',
             'module_ids' => 'nullable|array',
         ]);
 
         $privilege = $this->service->create($validated);
+
         return response()->json($privilege, 201);
     }
 
@@ -74,17 +80,19 @@ class UserPriviligesController extends Controller
     public function update(Request $request, UserPrivileges $userPrivilege)
     {
         $validated = $request->validate([
-            'tag_ids'    => 'nullable|array',
+            'tag_ids' => 'nullable|array',
             'module_ids' => 'nullable|array',
         ]);
 
         $updated = $this->service->update($userPrivilege, $validated);
+
         return response()->json($updated);
     }
 
     public function destroy(UserPrivileges $userPrivilege)
     {
         $this->service->delete($userPrivilege);
+
         return response()->json(['message' => 'Deleted successfully']);
     }
 }

@@ -9,7 +9,7 @@ class UserPrivileges extends Model
 {
     use HasFactory;
 
-    protected $table = 'user_priviliges'; // matches your migration table
+    protected $table = 'user_privileges'; // matches your migration table
 
     protected $fillable = [
         'user_id',
