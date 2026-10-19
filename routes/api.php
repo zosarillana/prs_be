@@ -114,17 +114,10 @@ Route::withoutMiddleware([
 
     Route::post('users/{id}/signature', [UserController::class, 'updateSignature']);
     Route::put('users/{id}/password', [UserController::class, 'updatePassword']);
-<<<<<<< HEAD
 
     // Serve a vendor payment (set date_served and close cheque)
     Route::post('vendor-payments/{id}/serve', [VendorPaymentController::class, 'serve']);
 
-=======
-    
-    // Serve a vendor payment (set date_served and close cheque)
-    Route::post('vendor-payments/{id}/serve', [VendorPaymentController::class, 'serve']);
-    
->>>>>>> ce3469f2e0c40ff8735b97698039fa891e41a033
     Route::apiResource('items', ItemController::class);
     Route::apiResource('vendors', VendorController::class);
     Route::apiResource('users', UserController::class);

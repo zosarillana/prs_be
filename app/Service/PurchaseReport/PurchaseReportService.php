@@ -236,10 +236,7 @@ class PurchaseReportService implements TableQueryService
                 'tag',
                 'item_status',
                 'remarks',
-<<<<<<< HEAD
-=======
                 'int_ord_no',
->>>>>>> ce3469f2e0c40ff8735b97698039fa891e41a033
             ];
 
             foreach ($jsonColumns as $column) {
@@ -252,11 +249,7 @@ class PurchaseReportService implements TableQueryService
     }
 
     protected array $filterMap = [
-<<<<<<< HEAD
-        // normal columns
-=======
         // Normal columns
->>>>>>> ce3469f2e0c40ff8735b97698039fa891e41a033
         'series_no' => 'like',
         'po_no' => 'like',
         'sap_id' => 'like',
@@ -265,11 +258,7 @@ class PurchaseReportService implements TableQueryService
         'pr_status' => 'in',
         'delivery_status' => 'equals',
 
-<<<<<<< HEAD
-        // date columns
-=======
         // Date columns
->>>>>>> ce3469f2e0c40ff8735b97698039fa891e41a033
         'created_at' => 'date',
         'date_submitted' => 'date',
         'date_needed' => 'date',
@@ -280,11 +269,8 @@ class PurchaseReportService implements TableQueryService
         'item_status' => 'json_in',
         'tag' => 'json_like',
         'remarks' => 'json_like',
-<<<<<<< HEAD
-=======
         'item_description' => 'json_like', // ADD THIS
         'int_ord_no' => 'json_like', // ADD THIS
->>>>>>> ce3469f2e0c40ff8735b97698039fa891e41a033
     ];
 
     /**
@@ -350,13 +336,9 @@ class PurchaseReportService implements TableQueryService
         // Process tags - convert IDs to objects
         if (isset($data['tag']) && is_array($data['tag'])) {
             $tagIds = collect($data['tag'])
-<<<<<<< HEAD
-                ->map(fn ($tag) => is_numeric($tag) ? (int) $tag : ($tag['id'] ?? null))
-=======
                 ->map(fn ($tag) => is_numeric($tag)
                     ? (int) $tag
                     : ($tag['id'] ?? null))
->>>>>>> ce3469f2e0c40ff8735b97698039fa891e41a033
                 ->filter()
                 ->values()
                 ->toArray();
@@ -370,17 +352,6 @@ class PurchaseReportService implements TableQueryService
                 ->whereIn('id', $tagIds)
                 ->get();
 
-<<<<<<< HEAD
-            $data['tag'] = collect($tagIds)->map(function ($tagId) use ($tags) {
-                $tag = $tags->firstWhere('id', $tagId);
-
-                return [
-                    'id' => $tag?->id,
-                    'description' => $tag?->description,
-                    'department' => $tag?->department?->name,
-                ];
-            })->toArray();
-=======
             $data['tag'] = collect($tagIds)
                 ->map(function ($tagId) use ($tags) {
                     $tag = $tags->firstWhere('id', $tagId);
@@ -392,7 +363,6 @@ class PurchaseReportService implements TableQueryService
                     ];
                 })
                 ->toArray();
->>>>>>> ce3469f2e0c40ff8735b97698039fa891e41a033
 
             \Log::info('🏷️ [4] PROCESSED TAGS', [
                 'processed_tag_count' => count($data['tag']),
@@ -414,22 +384,13 @@ class PurchaseReportService implements TableQueryService
             'item_status_count' => count($data['item_status']),
         ]);
 
-<<<<<<< HEAD
-        // ✅ Handle remarks - preserve existing or create new
-=======
         // Find existing report when updating
         $existing = null;
 
->>>>>>> ce3469f2e0c40ff8735b97698039fa891e41a033
         if (! empty($data['id'])) {
             $existing = PurchaseReport::find($data['id']);
         }
 
-<<<<<<< HEAD
-        // Ensure remarks array matches item count
-        if (! isset($data['remarks']) || count($data['remarks']) !== $itemCount) {
-            $data['remarks'] = array_pad($data['remarks'] ?? [], $itemCount, '');
-=======
         // Normalize incoming per-item arrays
         $newRemarks = isset($data['remarks']) && is_array($data['remarks'])
             ? $data['remarks']
@@ -454,7 +415,6 @@ class PurchaseReportService implements TableQueryService
             $mergedIntOrdNos[$i] = $newIntOrdNos[$i]
                 ?? $existingIntOrdNos[$i]
                 ?? '';
->>>>>>> ce3469f2e0c40ff8735b97698039fa891e41a033
         }
 
         // Ensure both arrays match the number of items
@@ -476,17 +436,9 @@ class PurchaseReportService implements TableQueryService
         ]);
 
         // Update existing record
-<<<<<<< HEAD
-        if (! empty($data['id'])) {
-            $existing = PurchaseReport::find($data['id']);
-            if ($existing) {
-                $existing->update($data);
-                $fresh = $existing->fresh();
-=======
         if ($existing) {
             // Do not persist request-only fields as model attributes
             unset($data['id'], $data['is_draft']);
->>>>>>> ce3469f2e0c40ff8735b97698039fa891e41a033
 
             $existing->update($data);
 
@@ -541,10 +493,6 @@ class PurchaseReportService implements TableQueryService
             'existing_item_status_count' => count($report->item_status ?? []),
         ]);
 
-<<<<<<< HEAD
-        // ✅ If 'tag' contains IDs (not objects yet), fetch their descriptions + departments
-        if (isset($data['tag']) && is_array($data['tag']) && isset($data['tag'][0]) && ! is_array($data['tag'][0])) {
-=======
         // Process tag IDs into tag objects
         if (
             isset($data['tag'])
@@ -558,22 +506,10 @@ class PurchaseReportService implements TableQueryService
                 ->values()
                 ->toArray();
 
->>>>>>> ce3469f2e0c40ff8735b97698039fa891e41a033
             $tags = Tags::with('department')
                 ->whereIn('id', $tagIds)
                 ->get();
 
-<<<<<<< HEAD
-            $data['tag'] = collect($data['tag'])->map(function ($tagId) use ($tags) {
-                $tag = $tags->firstWhere('id', $tagId);
-
-                return [
-                    'id' => $tag?->id,
-                    'description' => $tag?->description,
-                    'department' => $tag?->department?->name,
-                ];
-            })->toArray();
-=======
             $data['tag'] = collect($tagIds)
                 ->map(function ($tagId) use ($tags) {
                     $tag = $tags->firstWhere('id', $tagId);
@@ -585,7 +521,6 @@ class PurchaseReportService implements TableQueryService
                     ];
                 })
                 ->toArray();
->>>>>>> ce3469f2e0c40ff8735b97698039fa891e41a033
 
             \Log::info('🔧 [UPDATE] Processed tags', [
                 'tags' => $data['tag'],
@@ -616,24 +551,12 @@ class PurchaseReportService implements TableQueryService
             'incoming_is_draft_raw' => $data['is_draft'] ?? 'not set',
         ]);
 
-<<<<<<< HEAD
-        // ✅ ADD THIS - Log the incoming item_status
-        \Log::info('🔧 [UPDATE] Incoming item_status', [
-            'incoming_item_status' => $data['item_status'] ?? 'not set',
-            'incoming_count' => isset($data['item_status']) ? count($data['item_status']) : 0,
-        ]);
-
-        // ✅ Handle item_status updates
-        if ($newItemCount !== $oldItemCount || ! isset($data['item_status'])) {
-            // Item count changed OR no item_status provided - regenerate
-=======
         \Log::info('🔧 [UPDATE] Incoming item_status', [
             'incoming_item_status' => $data['item_status'] ?? 'not set',
             'incoming_count' => isset($data['item_status']) && is_array($data['item_status'])
                 ? count($data['item_status'])
                 : 0,
         ]);
->>>>>>> ce3469f2e0c40ff8735b97698039fa891e41a033
 
         // Handle item_status updates
         if ($newItemCount !== $oldItemCount || ! isset($data['item_status'])) {
@@ -644,24 +567,6 @@ class PurchaseReportService implements TableQueryService
                 $isDraft ? 'drafted' : 'pending'
             );
         } else {
-<<<<<<< HEAD
-            // Item count same AND item_status provided
-
-            if (! $isDraft && $report->pr_status === 'drafted') {
-                // Submitting a previously drafted PR - all items become pending
-                $data['item_status'] = array_fill(0, $newItemCount, 'pending');
-            } else {
-                // ✅ Normal update: Use the incoming item_status from the request
-                $incomingStatuses = $data['item_status'];
-
-                $newStatuses = [];
-                foreach ($incomingStatuses as $idx => $status) {
-                    if (in_array($status, ['rejected', 'rejected_tr', 'return'], true)) {
-                        $newStatuses[$idx] = 'pending';
-                    } else {
-                        $newStatuses[$idx] = $status;
-                    }
-=======
             // Submitting a previously drafted report
             if (! $isDraft && $report->pr_status === 'drafted') {
                 $data['item_status'] = array_fill(
@@ -684,7 +589,6 @@ class PurchaseReportService implements TableQueryService
                         ['rejected', 'rejected_tr', 'return'],
                         true
                     ) ? 'pending' : $status;
->>>>>>> ce3469f2e0c40ff8735b97698039fa891e41a033
                 }
 
                 $data['item_status'] = $newStatuses;
