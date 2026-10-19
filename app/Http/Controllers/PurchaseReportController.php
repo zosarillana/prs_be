@@ -147,10 +147,10 @@ class PurchaseReportController extends Controller
                         EXISTS (
                             SELECT 1
                             FROM (
-                                SELECT 0 as idx UNION ALL SELECT 1 UNION ALL SELECT 2 UNION ALL 
-                                SELECT 3 UNION ALL SELECT 4 UNION ALL SELECT 5 UNION ALL 
-                                SELECT 6 UNION ALL SELECT 7 UNION ALL SELECT 8 UNION ALL 
-                                SELECT 9 UNION ALL SELECT 10 UNION ALL SELECT 11 UNION ALL 
+                                SELECT 0 as idx UNION ALL SELECT 1 UNION ALL SELECT 2 UNION ALL
+                                SELECT 3 UNION ALL SELECT 4 UNION ALL SELECT 5 UNION ALL
+                                SELECT 6 UNION ALL SELECT 7 UNION ALL SELECT 8 UNION ALL
+                                SELECT 9 UNION ALL SELECT 10 UNION ALL SELECT 11 UNION ALL
                                 SELECT 12 UNION ALL SELECT 13 UNION ALL SELECT 14 UNION ALL SELECT 15
                             ) indices
                             WHERE JSON_EXTRACT(purchase_reports.tag, CONCAT('$[', indices.idx, '].id')) IS NOT NULL
@@ -488,7 +488,7 @@ class PurchaseReportController extends Controller
 
             return $response;
         });
-        
+
     }
 
     public function updateSapId(Request $request, $id)

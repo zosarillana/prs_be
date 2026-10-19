@@ -28,7 +28,6 @@ class MapPurchaseReport
             'tag' => self::mapTags($report->tag),
 
             'item_pos' => self::mapItemPos($report->itemPos),
-            
             'item_status' => $report->item_status,
             'int_ord_no' => $report->int_ord_no,
             'remarks' => $report->remarks,

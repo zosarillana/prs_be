@@ -12,20 +12,23 @@ return new class extends Migration
     public function up(): void
     {
         Schema::create('item_prices', function (Blueprint $table) {
-            $table->id(); // item_prices_id
-            $table->unique(['item_id', 'vendor_id']);
+            $table->id();
 
             $table->foreignId('item_id')
-                  ->constrained('items')
-                  ->cascadeOnDelete();
+                ->constrained('items')
+                ->cascadeOnDelete();
 
             $table->foreignId('vendor_id')
-                  ->constrained('vendors')
-                  ->cascadeOnDelete();
+                ->constrained('vendors')
+                ->cascadeOnDelete();
 
             $table->decimal('unit_price', 10, 2);
 
             $table->timestamps();
+
+            // ✅ unique AFTER columns exist
+           $table->unique(['item_id', 'vendor_id', 'unit_price']);
+
         });
     }
 
