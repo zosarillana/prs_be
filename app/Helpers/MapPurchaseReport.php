@@ -30,6 +30,7 @@ class MapPurchaseReport
             'item_pos' => self::mapItemPos($report->itemPos),
             
             'item_status' => $report->item_status,
+            'int_ord_no' => $report->int_ord_no,
             'remarks' => $report->remarks,
             'user' => $report->user ? self::mapUser($report->user) : null,
             'tr_user_id' => $report->trUser ? self::mapUser($report->trUser) : null,

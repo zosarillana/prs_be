@@ -768,6 +768,7 @@ class PurchaseReportService implements TableQueryService
         $report->unit = $removeAtIndex($report->unit);
         $report->item_description = $removeAtIndex($report->item_description);
         $report->tag = $removeAtIndex($report->tag);
+        $report->int_ord_no = $removeAtIndex($report->int_ord_no); // add
         $report->remarks = $removeAtIndex($report->remarks);
         $report->item_status = $removeAtIndex($report->item_status);
 
@@ -807,12 +808,16 @@ class PurchaseReportService implements TableQueryService
     {
         $report = PurchaseReport::findOrFail($id);
 
-        // ✅ Use proper structure for tag (array with id and description)
+        // Existing item count BEFORE appending the new row
+        $existingCount = count($report->item_description ?? []);
+
+        // New blank row (tag uses the proper structure)
         $newRow = [
             'quantity' => '1',
             'unit' => '',
             'item_description' => 'none',
-            'tag' => ['id' => null, 'description' => ''], // ✅ Proper structure instead of empty string
+            'tag' => ['id' => null, 'description' => ''],
+            'int_ord_no' => null, // blank until a CAPEX tag is chosen
             'remarks' => 'none',
             'item_status' => 'return',
         ];
@@ -823,28 +828,33 @@ class PurchaseReportService implements TableQueryService
 
             return $array;
         };
+
+        // Pad int_ord_no so it matches the existing item count
+        // (older records may have null or a shorter array)
+        $intOrdNos = array_pad($report->int_ord_no ?? [], $existingCount, null);
+
         $report->pr_status = 'on_hold_return';
         $report->quantity = $appendToArray($report->quantity, $newRow['quantity']);
         $report->unit = $appendToArray($report->unit, $newRow['unit']);
         $report->item_description = $appendToArray($report->item_description, $newRow['item_description']);
-        $report->tag = $appendToArray($report->tag, $newRow['tag']); // ✅ Now adds proper structure
+        $report->tag = $appendToArray($report->tag, $newRow['tag']);
+        $report->int_ord_no = $appendToArray($intOrdNos, $newRow['int_ord_no']);
         $report->remarks = $appendToArray($report->remarks, $newRow['remarks']);
         $report->item_status = $appendToArray($report->item_status, $newRow['item_status']);
 
+        \Log::info('Before save:', [
+            'item_status' => $report->item_status,
+            'int_ord_no' => $report->int_ord_no,
+        ]);
+
         $report->save();
-
-        // 🔍 Debug: Check value BEFORE save
-        \Log::info('Before save:', ['item_status' => $report->item_status]);
-
-        $report->save();
-
-        // 🔍 Debug: Check value AFTER save
-        \Log::info('After save:', ['item_status' => $report->item_status]);
 
         $fresh = $report->fresh();
 
-        // 🔍 Debug: Check value AFTER fresh
-        \Log::info('After fresh:', ['item_status' => $fresh->item_status]);
+        \Log::info('After fresh:', [
+            'item_status' => $fresh->item_status,
+            'int_ord_no' => $fresh->int_ord_no,
+        ]);
 
         return $fresh;
     }
@@ -853,18 +863,30 @@ class PurchaseReportService implements TableQueryService
     {
         $report = PurchaseReport::findOrFail($id);
 
+        // Item count BEFORE removal (used to align int_ord_no)
+        $existingCount = count($report->item_description ?? []);
+
         $removeIndices = function (?array $array) use ($rowIndices) {
             if (! is_array($array)) {
                 return $array;
             }
 
-            return array_values(array_filter($array, fn ($v, $k) => ! in_array($k, $rowIndices), ARRAY_FILTER_USE_BOTH));
+            return array_values(array_filter(
+                $array,
+                fn ($v, $k) => ! in_array($k, $rowIndices),
+                ARRAY_FILTER_USE_BOTH
+            ));
         };
+
+        // Pad int_ord_no so indexes line up with the other per-item arrays
+        // (older records may have null or a shorter array)
+        $intOrdNos = array_pad($report->int_ord_no ?? [], $existingCount, null);
 
         $report->quantity = $removeIndices($report->quantity);
         $report->unit = $removeIndices($report->unit);
         $report->item_description = $removeIndices($report->item_description);
         $report->tag = $removeIndices($report->tag);
+        $report->int_ord_no = $removeIndices($intOrdNos);
         $report->remarks = $removeIndices($report->remarks);
         $report->item_status = $removeIndices($report->item_status);
 

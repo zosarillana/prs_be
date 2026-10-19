@@ -51,6 +51,7 @@ class MapPurchaseReportClean
         $units        = (array) $report->unit;
         $descriptions = (array) $report->item_description;
         $statuses     = (array) $report->item_status;
+        $int_ord_no = (array) $report->int_ord_no;
         $remarks      = (array) $report->remarks;
         $tags         = self::mapTags($report->tag);
 
@@ -59,6 +60,7 @@ class MapPurchaseReportClean
             count($units),
             count($descriptions),
             count($statuses),
+            count($int_ord_no),
             count($remarks),
             count($tags)
         );
@@ -71,6 +73,7 @@ class MapPurchaseReportClean
                 'unit' => $units[$i] ?? null,
                 'description' => $descriptions[$i] ?? null,
                 'status' => $statuses[$i] ?? null,
+                'int_ord_no' => $int_ord_no[$i] ?? null,
                 'remarks' => $remarks[$i] ?? null,
                 'tag' => $tags[$i] ?? null,
             ];

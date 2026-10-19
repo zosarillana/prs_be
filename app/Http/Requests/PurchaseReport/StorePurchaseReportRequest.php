@@ -23,7 +23,7 @@ class StorePurchaseReportRequest extends FormRequest
             'date_submitted' => 'required|date',
             'date_needed' => 'required|date|after_or_equal:date_submitted',
 
-            'quantity.*' => 'required|numeric|min:1',     // or min:0 if 0 is allowed
+            'quantity.*' => 'required|numeric|min:1',
             'unit.*' => 'required|string|max:50',
             'item_description.*' => 'required|string|max:255',
 
@@ -32,7 +32,10 @@ class StorePurchaseReportRequest extends FormRequest
             'pr_status' => 'nullable|string|max:100',
             'remarks' => 'nullable|array',
 
-            // 👇 Add this line
+            // Internal order # per line item (CAPEX only), index-aligned with items
+            'int_ord_no' => 'nullable|array',
+            'int_ord_no.*' => 'nullable|string|max:50',
+
             'is_draft' => 'sometimes|boolean',
         ];
     }
